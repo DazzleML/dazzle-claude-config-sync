@@ -137,3 +137,13 @@ git hash-object (first 12). Only separated-generation runs (modes 1-2) write her
   line accompanies the first, never whether the answer is rejected.
   (2026-09-03, mode 1; M3, M4, M6, M8, M13, M14, M15 became tests.)
   Re-triage if the duplicate-text check ever stops covering repeated ids.
+
+## dazzle_claude_config/aistep.py @ b2ac0e2d8575
+
+- N4 (v0.5.21 sweep, the AI step, round 2): `TOOL_NAME = "ccs-merge"` ->
+  `"ccs"`. **don't-care** -- the cache namespace only has to be one stable
+  string that another tool's fingerprints cannot share; its spelling is
+  not a contract, and no observable behaviour of ccs depends on which
+  string it is. (2026-09-03, mode 1; N2, N3, N6, N9, N11 became tests.)
+  Re-triage if the cache directory is ever shared with another tool whose
+  namespace could be the same word.
