@@ -1,0 +1,109 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_aimerge.py"
+    ],
+    "timestamp": "2026-09-03T21:10:02-04:00"
+  },
+  "results": [
+    {
+      "id": "N1",
+      "file": "dazzle_claude_config/aimerge.py",
+      "note": "Drops the emptiness guard before a hunk, so an empty clean segment is emitted when a hunk starts the file or follows another hunk.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N2",
+      "file": "dazzle_claude_config/aimerge.py",
+      "note": "Never resets the clean accumulator, so context from before a hunk leaks into and duplicates in every later clean segment.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N3",
+      "file": "dazzle_claude_config/aimerge.py",
+      "note": "Re-reads the >>>>>>> terminator line as clean text, putting a conflict marker back into the output.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N4",
+      "file": "dazzle_claude_config/aimerge.py",
+      "note": "Drops the kind check on the following segment, so after-context is taken from a hunk segment (whose .lines is empty) instead of clean text.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N5",
+      "file": "dazzle_claude_config/aimerge.py",
+      "note": "Exact match instead of prefix match: a real '<<<<<<< ours' header is treated as clean text and no hunk is ever found.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N6",
+      "file": "dazzle_claude_config/aimerge.py",
+      "note": "Swaps the ours/theirs id prefixes, so selecting O1 yields the theirs line and vice versa.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N7",
+      "file": "dazzle_claude_config/aimerge.py",
+      "note": "One-line-either-side counts as a paragraph hunk, misclassifying a 1-vs-many conflict the sub-line report cannot describe.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N8",
+      "file": "dazzle_claude_config/aimerge.py",
+      "note": "split keeps a trailing empty element for a newline-terminated file, appending a spurious blank line on reassembly.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N9",
+      "file": "dazzle_claude_config/aimerge.py",
+      "note": "Compares the ours line against itself, so the report always shows zero differences and empty phrase lists.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N10",
+      "file": "dazzle_claude_config/aimerge.py",
+      "note": "Tokenising on spaces only: tabs/newlines glue words together and runs of spaces yield empty tokens, skewing phrases and the ratio.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "survived": 4,
+    "killed": 6
+  },
+  "anomalies": []
+}

@@ -47,4 +47,11 @@ def test_pip_version_pep440():
     if PHASE:
         assert any(c.isalpha() for c in pip_v.split(".")[-1])
     else:
-        assert all(c.isdigit() or c == "." for c in pip_v)
+        # On main the hook's line yields the bare release ("0.5.20"); on any
+        # other branch it yields a PEP 440 dev pre-release ("0.5.20.dev54"),
+        # and a branch name with hyphens must never leak into it. Measured
+        # 2026-09-03 on branch ccs-ai-pass-1: the old digits-and-dots-only
+        # assertion encoded "the suite only runs on main".
+        core, _, dev = pip_v.partition(".dev")
+        assert all(c.isdigit() or c == "." for c in core), pip_v
+        assert dev == "" or dev.isdigit(), pip_v

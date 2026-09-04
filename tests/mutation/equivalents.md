@@ -102,3 +102,18 @@ git hash-object (first 12). Only separated-generation runs (modes 1-2) write her
   subclass; no other `ValueError` can reach the handler. (2026-09-03, mode 1;
   round 2 of 2: N1, N2, N3, N7, N8 were killable and became tests.)
   Re-triage if `parse_json_block` ever passes bytes or a custom decoder.
+
+## dazzle_claude_config/aimerge.py @ 41aa6d428b6c
+
+- M5 (v0.5.21 sweep, the hunk parser): the `if startswith(BASE_MARK) ...
+  elif startswith(SEP_MARK)` pair in `parse_diff3` swapped. **equivalent** --
+  the two prefixes (`|||||||` and `=======`) are disjoint, so no line takes
+  both branches and the order of the tests cannot change which pane a line
+  lands in. (2026-09-03, generation mode 1; 6 of 14 killed in round 1, the
+  seven other survivors became tests.) Re-triage if a marker ever becomes a
+  prefix of another.
+- N4 (round 2): the `segments[k + 1].kind == "clean"` clause dropped from the
+  after-context loop. **equivalent** -- when the following segment is a hunk
+  its `lines` is the empty default, so `[:context]` of it is `[]`, exactly
+  what the guarded form leaves in place. (2026-09-03, mode 1; N1, N7, N10
+  became tests.) Re-triage if `Segment.lines` ever carries text for a hunk.
