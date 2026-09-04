@@ -1,0 +1,11 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_aidossier.py"],
+  "mutations": [
+    {"id": "M8", "file": "dazzle_claude_config/merge.py", "original": "            path = path.split(\" -> \", 1)[1].strip().strip('\"')", "mutated": "            path = path.split(\" -> \", 1)[0].strip().strip('\"')", "note": "re-run after test_checkout_states_reads_modified_untracked_and_renamed"},
+    {"id": "M9", "file": "dazzle_claude_config/merge.py", "original": "        states[path] = \"untracked\" if code == \"??\" else \"modified\"", "mutated": "        states[path] = \"untracked\" if code == \" ?\" else \"modified\"", "note": "re-run after test_checkout_states_reads_modified_untracked_and_renamed"},
+    {"id": "M11", "file": "dazzle_claude_config/merge.py", "original": "        for c in sorted(others, key=lambda c: c.score):", "mutated": "        for c in sorted(others, key=lambda c: -c.score):", "note": "re-run after test_the_candidates_are_listed_nearest_first"},
+    {"id": "M14", "file": "dazzle_claude_config/merge.py", "original": "    if remote and any(x is not None for x in remote):", "mutated": "    if remote and all(x is not None for x in remote):", "note": "re-run after test_a_half_known_remote_position_is_still_reported"},
+    {"id": "M17", "file": "dazzle_claude_config/livegit.py", "original": "READ_VERBS = (\"rev-parse\", \"ls-files\", \"log\")", "mutated": "READ_VERBS = (\"rev-parse\", \"ls-files\", \"log\", \"commit\")", "note": "re-run after test_the_allowlist_is_exactly_the_three_read_verbs"},
+    {"id": "M21", "file": "dazzle_claude_config/livegit.py", "original": "    rc, log = _run([\"log\", \"-n\", str(limit), \"--format=%h %ct\", \"--\", str(path)], cwd)", "mutated": "    rc, log = _run([\"log\", \"--format=%h %ct\", \"--\", str(path)], cwd)", "note": "re-run after test_probe_returns_at_most_the_limit"}
+  ]
+}

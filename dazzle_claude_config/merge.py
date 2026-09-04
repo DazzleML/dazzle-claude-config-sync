@@ -44,7 +44,7 @@ from .manifest import Entry, Manifest
 from .platform_info import user_claude_dir
 from .secrets import is_denied, scan_file
 from .userconfig import not_valid_json
-from . import aimerge, airecord, aistep, render, seeddecisions
+from . import aimerge, airecord, aistep, livegit, render, seeddecisions
 from .syncmap import EntryDiff, _normalize_eol, diff_all, only_scope, rel_in_scope, scope_diff
 
 # Strategies whose target is a straight copy of one repo file. Anything else
@@ -90,6 +90,21 @@ EXIT_REFUSED = 5
 
 
 @dataclass
+class Candidate:
+    """One version of a file in the checkout's history, as `infer_base` saw
+    it -- kept for the dossier instead of thrown away (0.5.21). `score` is
+    the line distance to the live file (nearest wins; a weak ranking, and the
+    dossier says so); `exact` marks the candidate at which the search stopped
+    because it equalled the live file, so a list ending there is partial."""
+    sha: str
+    date: str          # YYYY-MM-DD of the commit, "" when unknown
+    score: int
+    rejected: bool     # phantom-rejected: attributes deletions to us that theirs still has
+    eq_theirs: bool
+    exact: bool = False
+
+
+@dataclass
 class MergeItem:
     """One file needing a decision, with the three inputs git will be given."""
     entry: Entry
@@ -114,6 +129,11 @@ class MergeItem:
     base_supplied: bool = False
     base_label: str = ""
     cod: object | None = None      # basefind.CodStats once seeded
+    # The dossier's facts (0.5.21): every version infer_base considered, and
+    # whether the payload's copy in the checkout is committed, a working-tree
+    # edit, or untracked -- evidence for the model, never a decision.
+    candidates: list = field(default_factory=list)
+    checkout_state: str = "unknown"   # committed | modified | untracked | unknown
 
     @property
     def mergeable(self) -> bool:
@@ -217,6 +237,29 @@ def _head_candidates(manifest: Manifest, checkout: Path, roots: dict[str, Path])
                 yield d.entry, rel, live
 
 
+def _checkout_states(checkout: Path) -> dict[str, str]:
+    """Repo-relative path -> ``modified`` | ``untracked`` for every path the
+    checkout's working tree holds that its HEAD does not; absent = committed.
+    One `git status --porcelain` for the run. A no-base prompt on 2026-09-03
+    turned out to mean exactly this -- the checkout's edits were uncommitted
+    -- and the dossier says it in words instead of leaving it to be inferred."""
+    # Not through `_git`: it strips the output, and a porcelain line's first
+    # character IS the status code -- " M" loses its space and the path shifts.
+    p = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"],
+                       cwd=str(checkout), capture_output=True, text=True)
+    if p.returncode != 0:
+        return {}
+    states: dict[str, str] = {}
+    for line in p.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        code, path = line[:2], line[3:].strip().strip('"')
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1].strip().strip('"')
+        states[path] = "untracked" if code == "??" else "modified"
+    return states
+
+
 def _head_items(manifest: Manifest, checkout: Path, roots: dict[str, Path],
                 already: list[MergeItem], stage: Path | None,
                 base_mode: str = "auto", base_override: bytes | None = None,
@@ -232,6 +275,7 @@ def _head_items(manifest: Manifest, checkout: Path, roots: dict[str, Path],
         return []
     seen = {i.label for i in already}
     out: list[MergeItem] = []
+    states = _checkout_states(checkout)      # one porcelain call for the whole run
     for entry, rel, live in _head_candidates(manifest, checkout, roots):
         repo_path = f"{entry.repo}/{rel}" if rel else entry.repo
         p = subprocess.run(["git", "show", f"HEAD:{repo_path}"],
@@ -250,6 +294,7 @@ def _head_items(manifest: Manifest, checkout: Path, roots: dict[str, Path],
         item.repo = theirs                     # content of theirs (staged)
         item.repo_dest = checkout / repo_path  # where it actually installs
         rej: list = []
+        cands: list = []
         if base_override is not None:
             # Supplied from outside the checkout. Not inferred, not phantom-
             # checked: the check is one-directional (it cannot see bases from
@@ -264,7 +309,7 @@ def _head_items(manifest: Manifest, checkout: Path, roots: dict[str, Path],
             found = None
         else:
             found = infer_base(checkout, repo_path, live.read_bytes(), p.stdout,
-                               rejected=rej)
+                               rejected=rej, candidates=cands)
         if found is not None:
             blob, sha = found
             base_f = stage / (theirs.stem + f".base-{sha}")
@@ -281,6 +326,8 @@ def _head_items(manifest: Manifest, checkout: Path, roots: dict[str, Path],
             # the cost of deletions invented for content one side never had.
             if base_mode == "sibling":
                 item.base = sib
+        item.candidates = cands
+        item.checkout_state = states.get(repo_path, "committed")
         if entry.strategy in MERGE_REFUSED_STRATEGIES:
             layers = ", ".join([entry.repo, *entry.overlays]) or entry.repo
             item.reason = (f"'{entry.strategy}' composes its target; merge the "
@@ -373,9 +420,18 @@ PHANTOM_MIN_LINES = 3
 PHANTOM_RATIO = 0.8
 
 
+def _iso_date(unix_ts: str) -> str:
+    import datetime as _dt
+    try:
+        return _dt.datetime.fromtimestamp(int(unix_ts)).date().isoformat()
+    except (ValueError, OverflowError, OSError):
+        return ""
+
+
 def infer_base(checkout: Path, repo_path: str, ours: bytes, theirs: bytes,
                max_commits: int = 25,
-               rejected: list | None = None) -> tuple[bytes, str] | None:
+               rejected: list | None = None,
+               candidates: list | None = None) -> tuple[bytes, str] | None:
     """Best-effort ancestor for a live-vs-checkout merge.
 
     Nothing records which commit a live tree was last synced to, so the
@@ -416,10 +472,14 @@ def infer_base(checkout: Path, repo_path: str, ours: bytes, theirs: bytes,
     """
     norm = _normalize_eol
     ours_n, theirs_n = norm(ours), norm(theirs)
-    rc, out = _git(["log", "--format=%H", "--follow", "--", repo_path], cwd=checkout)
+    # `%ct` rides along on the same subprocess: the dossier wants the commit
+    # dates, and a second `git log` for them would be the #51 shape.
+    rc, out = _git(["log", "--format=%H %ct", "--follow", "--", repo_path], cwd=checkout)
     if rc != 0 or not out:
         return None
-    shas = out.split()[:max_commits + 1]
+    pairs = [l.split() for l in out.splitlines() if l.strip()]
+    dates = {p[0]: _iso_date(p[1]) for p in pairs if len(p) == 2}
+    shas = [p[0] for p in pairs if p][:max_commits + 1]
     rc_h, head = _git(["rev-parse", "HEAD"], cwd=checkout)
     head = head.strip() if rc_h == 0 else ""
     if head and head not in shas:
@@ -433,6 +493,9 @@ def infer_base(checkout: Path, repo_path: str, ours: bytes, theirs: bytes,
             continue
         cand = norm(p.stdout)
         if cand == ours_n:
+            if candidates is not None:                               # the list is PARTIAL past here
+                candidates.append(Candidate(sha[:7], dates.get(sha, ""), 0, False,
+                                            cand == theirs_n, exact=True))
             return (p.stdout, sha[:7])                               # rule 2
         eq_theirs = cand == theirs_n
         is_rejected = False
@@ -448,6 +511,8 @@ def infer_base(checkout: Path, repo_path: str, ours: bytes, theirs: bytes,
         score = sum((i2 - i1) + (j2 - j1)
                     for tag, i1, i2, j1, j2 in sm.get_opcodes() if tag != "equal")
         scored.append((score, p.stdout, sha[:7], is_rejected, eq_theirs))
+        if candidates is not None:
+            candidates.append(Candidate(sha[:7], dates.get(sha, ""), score, is_rejected, eq_theirs))
 
     if not scored:
         return None
@@ -1446,6 +1511,14 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
     # reopen safety are resolved once here rather than rebuilt per file.
     prof = inject_profile_for(resolved_tool, registry) if resolved_tool else None
     safe_reopen = reopen_is_safe(resolved_tool, registry) if resolved_tool else False
+    # The remote leg of the dossier: once per run, never per file, and never
+    # a fetch -- `status` owns the network.
+    remote = None
+    if ai is not None and repo is not None:
+        try:
+            remote = repo.ahead_behind()
+        except Exception:
+            remote = None
 
     for item in mergeable:
         safe = item.label.replace("/", "__").replace("\\", "__")
@@ -1492,10 +1565,13 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
                 res.ai_edited.append((item, _line_delta(merged, airecord.proposal_path(merged))))
                 res.ai_records[item.label] = rec
         if ai is not None:
+            lg = livegit.probe(item.live)
             out = aistep.ai_step(label=item.label, ours=item.live, base=item.base,
                                  theirs=item.repo, merged=merged, opts=ai,
                                  workdir=ws / (safe + ".ai-work"),
-                                 dossier=_ai_dossier(item), base_kind=_base_kind(item))
+                                 dossier=render_dossier(item, remote=remote, live=lg),
+                                 base_kind=_base_kind(item),
+                                 facts=dossier_facts(item, live=lg))
             res.ai.append((item, out))
             if out.status == "proposed":
                 # The validator is the backstop on the assembled file -- the
@@ -1834,19 +1910,93 @@ def _base_kind(item: MergeItem) -> str:
     return "inferred"
 
 
-def _ai_dossier(item: MergeItem) -> str:
-    """What ccs knows about the history, in plain words, for the prompt.
-    Evidence, never a decision: the base ccs chose and how, and the same
-    hints the terminal prints (the house ranks a deterministic rule above a
-    heuristic above a model)."""
+def _base_sha7(item: MergeItem) -> str:
+    """The seven characters after ``.base-`` in the staged base's name, or
+    the whole name for a supplied/sibling base."""
+    if item.base is None:
+        return ""
+    name = item.base.name
+    return name.rsplit(".base-", 1)[1] if ".base-" in name else name
+
+
+def render_dossier(item: MergeItem, remote=None, live=None) -> str:
+    """What ccs knows about this file's history, in plain words, for the
+    prompt -- and for a person, since the display is the crux.
+
+    Evidence, never a decision: ccs chose the base; the model reads why and
+    what else there was. Sections in `resolution_hints`' own order (a
+    deterministic rule beats a heuristic beats a model): the base and how;
+    the hints the terminal prints, verbatim; the other versions in the
+    checkout's history, nearest first by line distance -- a weak ranking,
+    and it says so; whether the payload's copy in the checkout is committed
+    or a working-tree edit; the remote leg (one fetch-free `ahead_behind`
+    per run, passed in); and the live tree's own git, from `livegit`.
+    Commit dates are here; file mtimes are not -- theirs is materialised
+    seconds before the merge and live's is whenever collect last ran, so
+    neither is a fact about the content (see `resolution_hints`)."""
     kind = _base_kind(item)
-    name = item.base.name if item.base is not None else "none"
-    lines = [f"The base ccs chose: {name} ({kind})."]
-    if item.base_supplied and item.base_label:
-        lines.append(f"It was supplied from outside the checkout: {item.base_label}.")
+    sha = _base_sha7(item)
+    by_sha = {c.sha: c for c in item.candidates}
+    lines: list[str] = []
+    if item.base is None:
+        lines.append("The base: none -- no common ancestor could be found.")
+    else:
+        when = by_sha[sha].date if sha in by_sha and by_sha[sha].date else ""
+        lines.append(f"The base ccs chose: {sha} ({kind})"
+                     + (f", committed {when}." if when else "."))
+        if item.base_supplied and item.base_label:
+            lines.append(f"It was supplied from outside the checkout: {item.base_label}.")
     for h in resolution_hints(item):
         lines.append(f"Hint: {h}")
+    others = [c for c in item.candidates if c.sha != sha and not c.exact]
+    stopped = next((c for c in item.candidates if c.exact), None)
+    if others:
+        parts = []
+        for c in sorted(others, key=lambda c: c.score):
+            tags = []
+            if c.eq_theirs:
+                tags.append("equals the payload's copy")
+            if c.rejected:
+                tags.append("rejected: it would attribute deletions to you that the payload still has")
+            parts.append(f"{c.sha} {c.date or 'undated'} distance {c.score}"
+                         + (f" ({'; '.join(tags)})" if tags else ""))
+        lines.append("Other versions of this file in the checkout's history, nearest to your "
+                     "live file first by line distance (a weak ranking; --base-search will "
+                     "rank by what each would lose): " + "; ".join(parts) + ".")
+    if stopped is not None:
+        lines.append(f"The search stopped at {stopped.sha} ({stopped.date or 'undated'}), "
+                     f"which equals your live file exactly; older versions were not compared.")
+    state = item.checkout_state
+    if state == "committed":
+        lines.append("The payload's copy in the checkout is committed at HEAD.")
+    elif state in ("modified", "untracked"):
+        lines.append(f"The payload's copy in the checkout has an UNCOMMITTED edit in the "
+                     f"working tree ({state}); the committed version is what is merged.")
+    else:
+        lines.append("Whether the checkout's copy is committed is unknown.")
+    if remote and any(x is not None for x in remote):
+        ahead, behind = remote
+        if not ahead and not behind:
+            lines.append("The checkout is in sync with its remote (as of the last fetch).")
+        else:
+            lines.append(f"The checkout is {ahead or 0} commit{'' if ahead == 1 else 's'} ahead of "
+                         f"its remote and {behind or 0} behind (as of the last fetch).")
+    else:
+        lines.append("The checkout's position against its remote is unknown (no fetch this run).")
+    lines.append(livegit.describe(live) if live is not None
+                 else "Your live tree was not probed for a git history.")
     return "\n".join(lines)
+
+
+def dossier_facts(item: MergeItem, live=None) -> dict:
+    """The structured facts that join the cache key -- everything that
+    changes what a proposal is made from, nothing that merely changes how
+    it is described. The remote leg stays out: a fetch elsewhere must not
+    invalidate an answer about the same three files."""
+    facts = {"base_sha": _base_sha7(item), "checkout_state": item.checkout_state,
+             "live_tracked": bool(live.tracked) if live is not None else False,
+             "live_head": (live.recent[0][0] if live is not None and live.recent else "")}
+    return facts
 
 
 def _line_delta(a: Path, b: Path) -> int:

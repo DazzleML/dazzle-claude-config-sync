@@ -177,3 +177,36 @@ git hash-object (first 12). Only separated-generation runs (modes 1-2) write her
   the item is refused either way and no exit code changes. Not worth a
   fixture with a refused-by-strategy entry. (2026-09-03, mode 1.)
   Re-triage if a refusal reason is ever machine-read.
+
+## dazzle_claude_config/merge.py @ 2d89ce0d4452
+
+- M1 (v0.5.21 sweep, the dossier): `[:max_commits + 1]` -> `[:max_commits]`
+  in `infer_base`'s commit window. **don't-care** for this unit -- the `+ 1`
+  predates the dossier (the window is HEAD plus `max_commits` older
+  versions) and only the 26th-oldest candidate moves; the unit re-parsed
+  the line without changing the window. A 26-commit fixture belongs to
+  the base-search work (#23). (2026-09-03, mode 1.)
+- M3 (same sweep): `if l.strip()` dropped from the `pairs` comprehension.
+  **equivalent** -- a blank line becomes `[]`, which `if p` drops from
+  `shas` and `len(p) == 2` drops from `dates`. Re-triage if either filter
+  goes.
+- M4 (same sweep): `rc != 0 or not out` -> `rc != 0 and not out` on the
+  `git log` guard. **equivalent in practice** -- a failing `git log` writes
+  to stderr, and `_git` returns stdout only, so `rc != 0` always comes with
+  empty `out`. Re-triage if `_git` ever merges stderr into its result.
+- M7 (same sweep): the porcelain path slice `line[3:]` -> `line[2:]`.
+  **equivalent** -- the extra character is the separator space, which the
+  `.strip()` that follows removes. Re-triage if the strip is removed.
+- N2 (same sweep, round 2): the commit window `[:max_commits + 1]` ->
+  `[1:max_commits + 1]` (HEAD dropped from the log's list). **equivalent**
+  -- the next lines re-insert HEAD at the front whenever it is absent
+  (`git log -- path` omits a TREESAME merge commit at HEAD, which is why
+  that line exists), so the searched list is the same. Re-triage if the
+  HEAD re-insertion ever goes.
+
+## dazzle_claude_config/livegit.py @ c1e9c2453f02
+
+- M19 (v0.5.21 sweep): the `rc != 0` half of the `rev-parse` guard dropped.
+  **equivalent in practice** -- a failing `rev-parse --show-toplevel`
+  prints to stderr, so `out.strip()` is empty and the guard still fires.
+  Re-triage if `_run` ever captures stderr into `out`.
