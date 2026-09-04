@@ -1,0 +1,117 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_airules.py"
+    ],
+    "timestamp": "2026-09-03T21:20:05-04:00"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "Hash prefix length 7 -> 8 in the describe() line.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M2",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "Plural condition flipped: n > 1 instead of n != 1, so zero rules renders as singular.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M3",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "Candidate order reversed: the default now wins over the per-path file.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "Source labels swapped, so a per-path hit reports source 'default'.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M5",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "Dropped CRLF normalisation, so CRLF and LF copies of the same rules hash differently.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M6",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "Dropped BOM stripping: a utf-8-sig file leaks \\ufeff into the first rule.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M7",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "all -> any: a paragraph with one leading-# line is dropped entirely instead of only pure headings.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M8",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "Counter advanced after use, so ids start at R0 and are off by one.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M9",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "Dropped per-line rstrip, so trailing whitespace survives into the rule text.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M10",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "Regex weakened: CRLF files and blank lines holding spaces/tabs no longer split paragraphs.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M11",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "The 'none' line names only the first place it looked instead of both.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "survived": 5,
+    "killed": 6
+  },
+  "anomalies": []
+}

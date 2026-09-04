@@ -1,0 +1,101 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_airules.py"
+    ],
+    "timestamp": "2026-09-03T21:21:57-04:00"
+  },
+  "results": [
+    {
+      "id": "N1",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "Drops the strip, so a leading blank line yields an empty first paragraph and shifts rule numbering.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N2",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "Drops the blank-line filter, so a whitespace-only line inside a paragraph survives and an all-blank paragraph becomes a rule.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N3",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "An indented heading line no longer counts as a heading, so a heading-only paragraph takes an id.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N4",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "Per-path candidate loses its .md suffix, so the label file is never found.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N5",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "A directory named like the rules file is accepted and read_bytes blows up instead of falling through.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N6",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "The found path reports an empty looked tuple, losing the record of where load_rules searched.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N7",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "The none-line joins candidate paths with a comma rather than the expected ' or '.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N8",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "Undecodable bytes now raise instead of being replaced, so a mixed-encoding rules file crashes the load.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N9",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "Multi-line rules are flattened with spaces, destroying line structure in the stored rule text.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "survived": 7,
+    "killed": 2
+  },
+  "anomalies": []
+}

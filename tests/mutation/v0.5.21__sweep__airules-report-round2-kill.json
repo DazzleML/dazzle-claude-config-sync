@@ -1,0 +1,76 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_airules.py"
+    ],
+    "timestamp": "2026-09-03T21:23:14-04:00"
+  },
+  "results": [
+    {
+      "id": "N2",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "re-run after test_blank_paragraphs_and_whitespace_lines_take_no_id",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N3",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "re-run after test_an_indented_heading_is_still_a_heading",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N5",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "re-run after test_a_directory_where_the_rules_file_should_be_is_not_a_file",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N6",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "re-run after the looked assertion in test_per_path_file_wins_over_default",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N7",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "re-run after the ' or ' assertion in test_no_file_is_a_named_degradation_not_a_crash",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N8",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "re-run after test_undecodable_bytes_do_not_crash_the_load",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 6
+  },
+  "anomalies": []
+}

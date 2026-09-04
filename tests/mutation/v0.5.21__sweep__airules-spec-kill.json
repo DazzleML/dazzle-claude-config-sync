@@ -1,0 +1,10 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_airules.py"],
+  "mutations": [
+    {"id": "M1", "file": "dazzle_claude_config/airules.py", "original": "        return f\"rules: {self.path} @ {self.sha[:7]} ({n} rule{'s' if n != 1 else ''})\"", "mutated": "        return f\"rules: {self.path} @ {self.sha[:8]} ({n} rule{'s' if n != 1 else ''})\"", "note": "re-run after test_describe_shows_a_seven_character_hash_like_git"},
+    {"id": "M2", "file": "dazzle_claude_config/airules.py", "original": "({n} rule{'s' if n != 1 else ''})", "mutated": "({n} rule{'s' if n > 1 else ''})", "note": "re-run after test_a_headings_only_file_has_zero_rules_and_says_so"},
+    {"id": "M6", "file": "dazzle_claude_config/airules.py", "original": "            text = raw.decode(\"utf-8-sig\", errors=\"replace\")", "mutated": "            text = raw.decode(\"utf-8\", errors=\"replace\")", "note": "re-run after test_a_bom_never_leaks_into_the_first_rule"},
+    {"id": "M7", "file": "dazzle_claude_config/airules.py", "original": "        if not lines or all(l.lstrip().startswith(\"#\") for l in lines):\n            continue\n        k += 1", "mutated": "        if not lines or any(l.lstrip().startswith(\"#\") for l in lines):\n            continue\n        k += 1", "note": "re-run after test_a_paragraph_mixing_a_hash_line_with_prose_is_a_rule"},
+    {"id": "M9", "file": "dazzle_claude_config/airules.py", "original": "        lines = [l.rstrip() for l in para.splitlines() if l.strip()]", "mutated": "        lines = [l for l in para.splitlines() if l.strip()]", "note": "re-run after test_trailing_whitespace_is_not_part_of_a_rule"}
+  ]
+}
