@@ -1,0 +1,52 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_aiprompt.py"
+    ],
+    "timestamp": "2026-09-03T21:50:50-04:00"
+  },
+  "results": [
+    {
+      "id": "N4",
+      "file": "dazzle_claude_config/aiprompt.py",
+      "note": "re-run after test_two_digit_ids_keep_their_numeric_order",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N7",
+      "file": "dazzle_claude_config/aiprompt.py",
+      "note": "re-run after test_base_text_the_payload_still_has_is_not_base_only",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N10",
+      "file": "dazzle_claude_config/aiprompt.py",
+      "note": "re-run after test_parse_failures_number_answers_from_one",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 3
+  },
+  "anomalies": []
+}

@@ -25,7 +25,7 @@ PHASE = ""  # Per-MINOR feature set: None, "alpha", "beta", "rc1", etc.
 PROJECT_PHASE = "alpha"  # "prealpha", "alpha", "beta", "stable", or ""
 
 # Auto-updated by git hooks - do not edit manually
-__version__ = "0.5.20_ccs-ai-pass-1_57-20260903-16b2a353"
+__version__ = "0.5.20_ccs-ai-pass-1_58-20260903-c8b4e022"
 __app_name__ = "dazzle-claude-config"
 
 

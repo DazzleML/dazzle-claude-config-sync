@@ -127,3 +127,13 @@ git hash-object (first 12). Only separated-generation runs (modes 1-2) write her
   (OSError, ValueError)` turns into the same `None`. (2026-09-03, mode 1;
   M4, M6, M8, M9, M10 became tests.) Re-triage if the read ever moves out
   of that `try`.
+
+## dazzle_claude_config/aiprompt.py @ b1978d2ca7be
+
+- M5 (v0.5.21 sweep, the proposal check): `b <= a` -> `b < a` in the
+  per-pane order test. **don't-care** -- the only answer the two forms
+  judge differently is a repeated id (`O1, O1`), which the duplicate-text
+  check has already refused; the mutation changes which second failure
+  line accompanies the first, never whether the answer is rejected.
+  (2026-09-03, mode 1; M3, M4, M6, M8, M13, M14, M15 became tests.)
+  Re-triage if the duplicate-text check ever stops covering repeated ids.

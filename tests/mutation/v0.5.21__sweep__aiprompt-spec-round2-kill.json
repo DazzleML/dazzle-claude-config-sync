@@ -1,0 +1,8 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_aiprompt.py"],
+  "mutations": [
+    {"id": "N4", "file": "dazzle_claude_config/aiprompt.py", "original": "            idx = [int(i[1:]) for i in ids]", "mutated": "            idx = [int(i[1]) for i in ids]", "note": "re-run after test_two_digit_ids_keep_their_numeric_order"},
+    {"id": "N7", "file": "dazzle_claude_config/aiprompt.py", "original": "        present = {l.strip() for l in h.ours + h.theirs if l.strip()}", "mutated": "        present = {l.strip() for l in h.ours if l.strip()}", "note": "re-run after test_base_text_the_payload_still_has_is_not_base_only"},
+    {"id": "N10", "file": "dazzle_claude_config/aiprompt.py", "original": "    for k, item in enumerate(data[\"hunks\"], 1):", "mutated": "    for k, item in enumerate(data[\"hunks\"], 0):", "note": "re-run after test_parse_failures_number_answers_from_one"}
+  ]
+}
