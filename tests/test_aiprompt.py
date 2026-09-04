@@ -286,6 +286,28 @@ def test_failures_never_use_the_validators_loss_prefix(tmp_path):
     assert not any(f.startswith(merge._LOSS_PREFIX) for f in failures)
 
 
+def test_the_prompt_template_is_declared_package_data_and_ships():
+    """The template is DATA, and the failure mode is the invisible kind
+    `tests/test_explanations_ship.py` exists for: a data file not declared in
+    pyproject is on disk in a checkout and absent after `pip install`, so the
+    only machine it breaks on is one somebody installed ccs on. Two claims:
+    pyproject declares it, and what the code reads is what would be packaged.
+    `_VENDORED.md` rides along -- a vendoring record is worth nothing if it
+    does not travel with the copy it describes."""
+    import importlib.resources
+    from pathlib import Path
+
+    pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
+    for declared in ("prompts/ai-merge.md", "_vendor/ailib/_VENDORED.md"):
+        assert f'"{declared}"' in pyproject, f"{declared} is not package-data in pyproject.toml"
+        packaged = importlib.resources.files("dazzle_claude_config").joinpath(declared)
+        assert packaged.is_file(), f"{declared} is not reachable as packaged data"
+    # the path the code actually reads and the packaged path are one file
+    packaged = importlib.resources.files("dazzle_claude_config").joinpath("prompts/ai-merge.md")
+    assert aiprompt.TEMPLATE.read_bytes() == packaged.read_bytes()
+    assert "{hunks}" in aiprompt.TEMPLATE.read_text(encoding="utf-8")
+
+
 def test_resolve_then_assemble_produces_the_file(tmp_path):
     parsed = aimerge.parse_diff3(DIFF3)
     choices = _choice(1, ["O1", "O2", "T2"])
