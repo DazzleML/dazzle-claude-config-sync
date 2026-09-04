@@ -171,6 +171,35 @@ class ValidationResult:
         return not self.failures
 
 
+def _minus_licensed(res: "ValidationResult",
+                    licensed: list[tuple[int, list[str], list[str]]]) -> "ValidationResult":
+    """`res` with the losses a cited rule authorised taken out of it.
+
+    Only the dropped-line failures are touched, and only for lines the AI's
+    answer let go under a rule that exists in the person's own rules file
+    (`aistep` collects them; `aiprompt.check_proposal` is what ruled they
+    were licensed). Everything else `validate` found -- conflict markers,
+    invented lines, duplication, a regressed pattern, a loss NO rule covers
+    -- survives untouched, so this narrows the gate by exactly the width of
+    what the person wrote down and not a line more.
+    """
+    allowed = {ln.strip() for _, _, lines in licensed for ln in lines if ln.strip()}
+    if not allowed:
+        return res
+    out = ValidationResult(failures=[f for f in res.failures
+                                     if not f.startswith(_LOSS_PREFIX)],
+                           survived=dict(res.survived), honoured=dict(res.honoured))
+    for side, lines in res.lost.items():
+        rest = [l for l in lines if l.strip() not in allowed]
+        if rest:
+            out.lost[side] = rest
+            out.failures.append(
+                f"{_LOSS_PREFIX} {len(rest)} line(s) that {side} ({_side_name(side)}) has are "
+                f"missing from the result, not replaced "
+                f"(first: {_excerpt(sorted(rest)[0], 70)!r})")
+    return out
+
+
 def plan(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
          theirs_from: str = "head", stage: Path | None = None,
          base_mode: str = "auto", base_override: bytes | None = None,
@@ -1570,9 +1599,20 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
                 stale = airecord.stale_sides(rec, item.live.read_bytes(), item.repo.read_bytes())
                 if stale:
                     res.ai_stale[item.label] = stale
-            elif st == "edited" and airecord.proposal_path(merged).is_file():
-                res.ai_edited.append((item, _line_delta(merged, airecord.proposal_path(merged))))
-                res.ai_records[item.label] = rec
+            elif st in ("edited", "not-copied") and airecord.proposal_path(merged).is_file():
+                # `not-copied` is the third state the record can be in and the
+                # one the report used to pass over in silence: the person had
+                # already resolved the file themselves, so the copy rule never
+                # fired, and a proposal now sits beside their work with nothing
+                # saying so. Both cases say the same true thing -- this file is
+                # yours and it differs from the proposal by N lines -- so both
+                # take the same line. A delta of zero says nothing at all: the
+                # bytes agreeing is a coincidence this tool refuses to read as
+                # provenance (the whole reason the record exists).
+                delta = _line_delta(merged, airecord.proposal_path(merged))
+                if delta:
+                    res.ai_edited.append((item, delta))
+                    res.ai_records[item.label] = rec
         if ai is not None:
             lg = livegit.probe(item.live)
             out = aistep.ai_step(label=item.label, ours=item.live, base=item.base,
@@ -1585,8 +1625,17 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
             if out.status == "proposed":
                 # The validator is the backstop on the assembled file -- the
                 # same gate a hand merge passes -- and the record says what
-                # it said.
+                # it said. With ONE difference, and it is the whole point of
+                # a rules file: `validate` compares the result against the
+                # two sides and has never heard of rules, so a drop the
+                # person authorised in their own words reads to it as content
+                # lost by accident. Every such drop has already been ruled on
+                # by `check_proposal` against the rules actually loaded; here
+                # they are subtracted from the loss, and the report says
+                # which rule let each go.
                 v_ai = validate(item, out.proposal, probes=probes)
+                if not v_ai.ok and out.licensed:
+                    v_ai = _minus_licensed(v_ai, out.licensed)
                 if not v_ai.ok:
                     out.record.valid = False
                     out.record.failures = list(v_ai.failures)
@@ -1655,6 +1704,16 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
             res.previewed.append(item)
             continue
         v = validate(item, merged, probes=probes)
+        # The same subtraction as the proposal's own gate, and for the same
+        # reason -- but read from the RECORD, so it survives the run that
+        # made it. `.merged` here may BE the proposal (copied a moment ago,
+        # or last week), and refusing it now for a drop the person's own
+        # rules authorised would be the tool arguing with itself one line
+        # after saying "validation passed".
+        if not v.ok:
+            _rec = airecord.load(airecord.record_path(merged))
+            if _rec is not None and _rec.valid and _rec.licensed:
+                v = _minus_licensed(v, [(0, [], list(_rec.licensed))])
         # "A human resolved it" = a tool was launched, or the workspace file
         # carries edits since seeding (the headless flow: edit, re-run).
         human = launch_tool or item in res.resumed

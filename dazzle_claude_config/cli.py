@@ -1644,6 +1644,14 @@ def _print_ai_report(r, args) -> None:
                 print(c("dim", f"    hunk {n}: {why}{cite}"))
             for line in out.reports:
                 print("    " + c("magenta", line))
+            # A drop is the one thing a rule can authorise, so it is the one
+            # thing the report must never let past in silence: the line that
+            # went, and the rule that let it.
+            for n, rules, gone in out.licensed:
+                for ln in gone:
+                    head = f"    hunk {n}: dropped under {', '.join(rules)} -- "
+                    shown, _ = render.fit(ln.strip(), indent=len(head))
+                    print(c("dim", head) + c("yellow", shown))
             if item in r.ai_copied:
                 print(c("dim", "    copied into ") + c("bold", ".merged")
                       + c("dim", " (you had no result of your own there); ")

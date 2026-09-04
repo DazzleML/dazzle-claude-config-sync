@@ -83,6 +83,13 @@ class Record:
     fingerprint: str            # the cache key the proposal was made under
     valid: bool
     failures: list[str] = field(default_factory=list)
+    # Lines a cited rule let the answer drop. They live here, not only in the
+    # run that made them, because the file-level validator reads the result
+    # against the two sides every time the file is looked at -- and a drop the
+    # person authorised in their own rules file must not turn into a refusal
+    # the next morning. An older record simply has none: a default, not a
+    # required key, so `load` needs no version bump.
+    licensed: list[str] = field(default_factory=list)
     created: str = ""
     copied_sha: str = ""
     accepted_unchanged: str = ""
@@ -105,14 +112,15 @@ class Record:
 
 def new_record(*, proposal: bytes, ours: bytes, theirs: bytes, base: bytes | None,
                base_kind: str, backend: str, rules_path: str, rules_sha: str,
-               fingerprint: str, valid: bool, failures: list[str]) -> Record:
+               fingerprint: str, valid: bool, failures: list[str],
+               licensed: list[str] = ()) -> Record:
     """A record for a proposal just written, hashing the sides it came from."""
     return Record(proposal_sha=norm_sha(proposal), ours_sha=norm_sha(ours),
                   theirs_sha=norm_sha(theirs),
                   base_sha=norm_sha(base) if base is not None else "",
                   base_kind=base_kind, backend=backend, rules_path=rules_path,
                   rules_sha=rules_sha, fingerprint=fingerprint, valid=valid,
-                  failures=list(failures))
+                  failures=list(failures), licensed=list(licensed))
 
 
 _REQUIRED = ("proposal_sha", "ours_sha", "theirs_sha", "base_sha", "base_kind",

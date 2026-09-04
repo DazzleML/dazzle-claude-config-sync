@@ -63,6 +63,10 @@ class AiOutcome:
     failures: list[str] = field(default_factory=list)
     rationales: list[tuple[int, list[str], str]] = field(default_factory=list)
     reports: list[str] = field(default_factory=list)   # the sub-line report lines
+    # (hunk, the rules cited, the pane lines that citation let go) -- the
+    # caller's file-level validator has no idea a rules file exists, and
+    # without this it refuses exactly the drops the person pre-authorised.
+    licensed: list[tuple[int, list[str], list[str]]] = field(default_factory=list)
     prompt_path: Path | None = None
     response_path: Path | None = None
     cached: bool = False
@@ -178,10 +182,42 @@ def ai_step(*, label: str, ours: Path, base: Path, theirs: Path, merged: Path,
     # -- the proposal ----------------------------------------------------------
     blob = aimerge.assemble(parsed, aiprompt.resolve(parsed.hunks, choices)).encode("utf-8")
     proposal_path.write_bytes(blob)
-    rec = airecord.new_record(proposal=blob, valid=True, failures=[], **common)
+    licensed = _licensed_drops(parsed.hunks, choices)
+    rec = airecord.new_record(proposal=blob, valid=True, failures=[],
+                              licensed=[ln for _, _, lines in licensed for ln in lines],
+                              **common)
     airecord.write(record_path, rec)
     out.status = "proposed"
     out.proposal = proposal_path
     out.record = rec
     out.rationales = [(n, list(c.rules), c.rationale) for n, c in sorted(choices.items())]
+    out.licensed = licensed
+    return out
+
+
+def _licensed_drops(hunks, choices) -> list[tuple[int, list[str], list[str]]]:
+    """Per hunk: the rules the answer cited, and the pane lines that citation
+    let go.
+
+    `check_proposal` has already ruled on these -- it passed, so every id
+    exists and every drop is either a rewrite or licensed by a rule that is
+    in the loaded file. What this list is for is the layer above: the
+    caller's `validate` reads the assembled file against the two sides and
+    knows nothing about rules, so a drop the person pre-authorised in their
+    own words looks to it exactly like content lost by accident. Measured on
+    a scratch world (2026-09-04): `--dissimilar`, a rules file, `R2` cited on
+    the hunk -- the answer passed the check and the file was refused anyway,
+    which made the rules file decorative for the one thing it is for.
+    """
+    out: list[tuple[int, list[str], list[str]]] = []
+    for h in hunks:
+        c = choices.get(h.n)
+        if c is None or not c.rules:
+            continue
+        table = h.ids()
+        kept = {table[i].strip() for i in c.lines if i in table}
+        gone = [ln for ln in list(h.ours) + list(h.theirs)
+                if ln.strip() and ln.strip() not in kept]
+        if gone:
+            out.append((h.n, list(c.rules), gone))
     return out
