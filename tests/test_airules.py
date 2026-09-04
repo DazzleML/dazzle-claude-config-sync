@@ -1,7 +1,8 @@
 """a3 -- the rules a person wrote for `ccs merge --ai`, loaded and named.
 
 Rules are plain prose in user territory: one file per path
-(`~/claude/ccs-merge-rules/<label>.md`), else `_default.md`, else none --
+(`~/claude/ccs-merge-rules/<label>.rules.md`, the label flattened), else
+`_default.md`, else none --
 and "none" is a named degradation that the output says out loud, never a
 crash. Each non-blank paragraph gets a positional id (`R1`, `R2`, ...) so
 a model can cite the rule that licenses a drop and ccs can check the
@@ -32,11 +33,11 @@ def _write(p, text):
 
 
 def test_per_path_file_wins_over_default(tmp_path):
-    _write(tmp_path / "dotclaude" / "CLAUDE.md.md", RULES)
+    _write(tmp_path / "dotclaude__CLAUDE.md.rules.md", RULES)
     _write(tmp_path / "_default.md", "TAKE upstream everywhere.\n")
     r = airules.load_rules("dotclaude/CLAUDE.md", tmp_path)
     assert r.source == "path"
-    assert r.path == tmp_path / "dotclaude" / "CLAUDE.md.md"
+    assert r.path == tmp_path / "dotclaude__CLAUDE.md.rules.md"
     assert list(r.ids) == ["R1", "R2", "R3"]
     assert r.ids["R1"].startswith("This box is a production Linux server.")
     assert r.ids["R2"] == "TAKE upstream's wording everywhere else."
@@ -90,7 +91,8 @@ def test_no_file_is_a_named_degradation_not_a_crash(tmp_path):
     assert r.source == "none" and r.path is None and r.ids == {} and r.sha == ""
     d = r.describe()
     assert "none" in d
-    assert "CLAUDE.md.md" in d and "_default.md" in d   # where it looked
+    assert "dotclaude__CLAUDE.md.rules.md" in d and "_default.md" in d   # where it looked
+    assert "CLAUDE.md.md" not in d          # the doubled extension it used to print
     assert " or " in d                                   # N7: "at A or B", the designed sentence
 
 
@@ -151,5 +153,21 @@ def test_rules_dir_and_prompts_dir_live_in_user_territory(tmp_path):
 
 
 def test_candidates_are_the_per_path_file_then_default(tmp_path):
+    """The label is FLATTENED and gets `.rules.md`, matching the workspace's
+    `skills__think__SKILL.md.merged` and the prompt directory's
+    `skills__think__SKILL.md-<ts>.md`. One naming rule across all three."""
     assert airules.candidates("skills/think/SKILL.md", tmp_path) == [
-        tmp_path / "skills" / "think" / "SKILL.md.md", tmp_path / "_default.md"]
+        tmp_path / "skills__think__SKILL.md.rules.md", tmp_path / "_default.md"]
+
+
+def test_a_rules_path_needs_no_directory_and_doubles_no_extension(tmp_path):
+    """The shape this replaced put the file at `skills/think/SKILL.md.md` --
+    a directory to create and an extension that reads as a typo. Both
+    readers who met it called it a bug, so both properties are pinned."""
+    per_path = airules.candidates("skills/think/SKILL.md", tmp_path)[0]
+    assert per_path.parent == tmp_path                    # no directory to create
+    assert ".md.md" not in per_path.name
+    assert per_path.name.endswith(".rules.md")            # still markdown, still says why
+    assert "skills__think__SKILL.md" in per_path.name     # the label is still readable
+    # a label with no extension of its own reads the same way
+    assert airules.candidates("bin/setup", tmp_path)[0].name == "bin__setup.rules.md"

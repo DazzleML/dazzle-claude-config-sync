@@ -15,7 +15,7 @@ ccs diff  skills/think/SKILL.md --ai                 # the proposal beside your 
 
 1. **The base.** ccs infers the common ancestor from the checkout's history, as it does for every merge. Without one, `--ai` refuses before any prompt is built: a two-way guess is not a merge. Supply a base with `--base-file`, or resolve the file by hand.
 2. **The classification.** `git merge-file --diff3` has already done it. What git resolved is clean text and is never shown to the model. Every conflict hunk, a region both sides changed, is.
-3. **The rules.** Your policy for the file, in your words, from `~/claude/ccs-merge-rules/<label>.md` (so `dotclaude/CLAUDE.md` reads `dotclaude/CLAUDE.md.md`), else `_default.md`, else none. Every paragraph gets an id (`R1`, `R2`, ...) the model cites when it drops a line. No rules file is a named state, printed with both places ccs looked, never a silent default.
+3. **The rules.** Your policy for the file, in your words, from `~/claude/ccs-merge-rules/<label>.rules.md` -- the label flattened, so `dotclaude/CLAUDE.md` reads `dotclaude__CLAUDE.md.rules.md`, one flat file you can create without making a directory -- else `_default.md`, else none. Every paragraph gets an id (`R1`, `R2`, ...) the model cites when it drops a line. No rules file is a named state, printed with both places ccs looked, never a silent default.
 4. **The prompt.** The rules with their ids, what ccs knows about the file's history (below), and each hunk with its lines named `O1..` (your live file), `B1..` (the ancestor), `T1..` (the payload's copy). A few context lines are shown and marked not selectable.
 5. **The answer.** One JSON block naming lines per hunk, the rules it leaned on, and a sentence of why:
    ```json
@@ -98,11 +98,11 @@ A non-interactive run never says yes. A yes is recorded, so the same bytes are n
 | the proposal | `~/claude/merge/ccs/<label>.merged-ai` |
 | its record | `~/claude/merge/ccs/<label>.merged-ai.record.json` |
 | a carried answer | `~/claude/merge/ccs/<label>.merged-ai.response.json` |
-| your rules | `~/claude/ccs-merge-rules/<label>.md`, `_default.md` |
+| your rules | `~/claude/ccs-merge-rules/<label>.rules.md`, `_default.md` |
 | written prompts | `~/claude/ccs-merge-rules/_prompts/<label>-<timestamp>.md` |
 | the cache | `~/claude/cache/ccs-ai/` |
 
-`<label>` in the workspace is the file's path with its separators flattened, as it already is for `.merged`: `skills/s.md` becomes `skills__s.md.merged-ai`. The rules and prompt paths keep the real shape, so the rules file for `skills/s.md` is `~/claude/ccs-merge-rules/skills/s.md.md` -- when there is no rules file, ccs prints both paths it looked at, so you never have to work that out from this table.
+`<label>` everywhere above is the file's path with its separators flattened, and it is the same rule in all three places: `skills/s.md` becomes `skills__s.md.merged-ai` in the workspace, `skills__s.md-<timestamp>.md` under `_prompts/`, and `skills__s.md.rules.md` for its rules. Nothing nests, so there is never a directory to create first -- and when there is no rules file, ccs prints both paths it looked at, so you never have to work it out from this table.
 
 Nothing under the payload checkout is written by `--ai`.
 

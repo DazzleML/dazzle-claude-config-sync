@@ -428,6 +428,28 @@ def test_union_duplication_is_caught_by_validation(tmp_path):
     assert any("duplicated" in f for f in res.failures)
 
 
+def test_a_line_you_wrote_yourself_is_invented_not_duplicated(tmp_path):
+    """A line NEITHER side has cannot have been duplicated -- it is new text,
+    which the invented-content check already reports by name. Before the
+    guard, `n > max(0, 0)` held for every substantial line a person wrote
+    themselves, so a hand-blended paragraph was reported twice: once
+    correctly, and once as "content was duplicated", which sends the reader
+    hunting for a second copy that does not exist. Measured while hand-
+    merging the two sides of a paragraph conflict, 2026-09-04."""
+    item = _item(tmp_path)
+    out = tmp_path / "merged"
+    theirs = "the payload's own long line, well over forty characters of it"
+    ours = "this box's own long line, also well over forty characters long"
+    item.repo.write_bytes((theirs + "\n").encode())
+    item.live.write_bytes((ours + "\n").encode())
+    item.base.write_bytes(b"an older line neither side kept, forty characters and more\n")
+    # the resolution a person would actually write: both sides, blended, once
+    out.write_bytes((theirs + " " + ours + "\n").encode())
+    res = merge.validate(item, out)
+    assert any("neither side" in f for f in res.failures), res.failures
+    assert not any("duplicated" in f for f in res.failures), res.failures
+
+
 def test_union_is_not_the_default(tmp_path):
     """Union silently keeps both sides, so it must always be opt-in."""
     item = _item(tmp_path)

@@ -1,12 +1,25 @@
 """The rules a person wrote for ``ccs merge --ai``, loaded and named.
 
 Rules are the person's policy in their own words -- plain prose, in user
-territory, versioned wherever they like. One file per path
-(``~/claude/ccs-merge-rules/<label>.md``, so ``dotclaude/CLAUDE.md`` reads
-``dotclaude/CLAUDE.md.md``), else ``_default.md``, else none. "None" is a
-named degradation the output says out loud; it is never a crash and never
-a silent default. Rules decide HOW a file's dual-touched hunks resolve; the
-manifest still decides WHETHER a file is merged at all.
+territory, versioned wherever they like. One file per path, named the way
+everything else ccs writes about a file is named: the label flattened, then
+what the file is for. ``dotclaude/CLAUDE.md`` reads
+``~/claude/ccs-merge-rules/dotclaude__CLAUDE.md.rules.md``, beside the
+``_prompts/dotclaude__CLAUDE.md-<ts>.md`` the step writes and the
+``dotclaude__CLAUDE.md.merged`` in the workspace. Else ``_default.md``,
+else none.
+
+The shape first built was ``<label>.md``, which put the file at
+``dotclaude/CLAUDE.md.md`` -- a directory to create AND a doubled extension
+that reads as a typo. Two readers called it a bug within a day of seeing
+it, which is the right verdict for a path a person is meant to create by
+hand. ``.rules.md`` says what the file is, keeps the label recognisable,
+needs no directory, and keeps every rules file a ``.md`` an editor will
+highlight.
+
+"None" is a named degradation the output says out loud; it is never a crash
+and never a silent default. Rules decide HOW a file's dual-touched hunks
+resolve; the manifest still decides WHETHER a file is merged at all.
 
 Every non-blank paragraph gets a positional id (``R1``, ``R2``, ...). The
 prompt shows the ids; a model cites one when it drops a line; ccs checks
@@ -25,6 +38,7 @@ from pathlib import Path
 
 DEFAULT_NAME = "_default.md"
 PROMPTS_NAME = "_prompts"
+RULES_SUFFIX = ".rules.md"      # <flattened label> + this; see the module docstring
 
 
 @dataclass
@@ -55,9 +69,17 @@ def prompts_dir(user_claude: Path) -> Path:
     return rules_dir(user_claude) / PROMPTS_NAME
 
 
+def safe_name(label: str) -> str:
+    """The workspace's own transform: one flat file name per label, however
+    deep the label. Shared with the merge workspace and the prompt directory
+    so a person sees one naming rule across all three, not three."""
+    return label.replace("/", "__").replace("\\", "__")
+
+
 def candidates(label: str, rules_dir: Path) -> list[Path]:
     """The per-path file, then the default -- the order load_rules tries."""
-    return [Path(rules_dir) / (label + ".md"), Path(rules_dir) / DEFAULT_NAME]
+    return [Path(rules_dir) / (safe_name(label) + RULES_SUFFIX),
+            Path(rules_dir) / DEFAULT_NAME]
 
 
 _PARAGRAPH_BREAK = re.compile(r"(?:\r?\n)[ \t]*(?:\r?\n)+")

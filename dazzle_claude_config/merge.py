@@ -1266,7 +1266,14 @@ def validate(item: MergeItem, merged: Path,
     mc = Counter(merged_lines)
     oc = Counter(l.strip() for l in _text_of(item.live).splitlines() if len(l.strip()) > 40)
     tc = Counter(l.strip() for l in _text_of(item.repo).splitlines() if len(l.strip()) > 40)
-    dupes = [l for l, n in mc.items() if n > max(oc.get(l, 0), tc.get(l, 0))]
+    # `> 0` on the right: a line NEITHER side has cannot have been duplicated
+    # -- it is new text, which is the invented-content check's business one
+    # block up, and it already reported it by name. Without the guard, every
+    # substantial line a person writes themselves is reported twice, the
+    # second time as "content was duplicated", which is not true and sends
+    # them looking for a second copy that does not exist. Measured while
+    # hand-blending two paragraphs, 2026-09-04.
+    dupes = [l for l, n in mc.items() if n > max(oc.get(l, 0), tc.get(l, 0)) > 0]
     if dupes:
         res.failures.append(
             f"{len(dupes)} line(s) appear more often than on either side -- "
