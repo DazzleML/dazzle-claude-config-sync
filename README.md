@@ -74,6 +74,8 @@ A machine whose file forked *before* the payload existed has no ancestor in the 
 
 **[Merging, walked through](docs/merge.md)** covers the three sides, reading the dry-run table and the receipt, finding the ancestor, and merging on a box with no GUI; **[a three-way merge, if you have never done one](docs/three-way-merge.md)** is the ten-minute primer on the tool window itself.
 
+`ccs merge <path> --ai` asks a model to resolve the hunks both sides changed. It writes its answer to a **second file beside yours** and installs nothing: the model may only select whole lines out of the panes it was shown, under rules you write in your own words, and a proposal that invents a line or drops one without citing a rule is refused before you ever see it. The default backend is `prompt-only`, which writes the prompt and sends nothing anywhere. **[Asking a model to resolve the hunks](docs/ai-merge.md)** is the whole feature: the rules file, the ancestry the model is told, what the check enforces, and what `--accept` asks before installing a proposal you have not read.
+
 Here is: **[the full loop, step by step, with what each step guarantees](docs/sync-loop.md)** and **[ccs walked through end to end](docs/walkthrough.md)**: a first machine from nothing, the `CLAUDE.md` choice, a second machine, and a box that forked before the payload existed, with an observable outcome at every step so the page doubles as a test.
 
 ## Usage

@@ -218,18 +218,44 @@ def test_ai_with_no_value_and_no_config_means_prompt_only(tmp_path, capsys):
     assert rc == EXIT_DRIFT
 
 
-def test_a_proposal_is_not_copied_over_a_result_you_already_had(tmp_path, capsys):
-    """Mutation survivor M16: the copy rule fires only when .merged was
-    absent; an existing result -- even the untouched seed -- is yours."""
+def test_a_proposal_is_not_copied_over_a_result_you_edited(tmp_path, capsys):
+    """Mutation survivor M16, sharpened: the copy rule reads whether the
+    person has work of their own there, and an edit in the merge tool is
+    exactly that -- the proposal lands beside it, the file stays theirs."""
     w = _world(tmp_path)
     main(_ccs(w, "merge", "skills/s.md", "--no-launch"))        # seeds .merged (with markers)
     capsys.readouterr()
-    seed = w["merged"].read_bytes()
+    mine = b"# skill\nrule A, resolved by hand\nrule B\n"
+    w["merged"].write_bytes(mine)                               # their own resolution
     main(_ccs(w, "merge", "skills/s.md", "--ai", "--ai-response", str(_answer(tmp_path)), "--no-launch"))
     out = capsys.readouterr().out
     assert "the AI's proposal" in out and "copied into" not in out, out
-    assert w["merged"].read_bytes() == seed
+    assert w["merged"].read_bytes() == mine
     assert airecord.proposal_path(w["merged"]).read_bytes() == PROPOSAL
+
+
+def test_the_two_step_flow_copies_over_the_seed_nobody_touched(tmp_path, capsys):
+    """The flow the feature is actually used through: one run writes the
+    prompt (and seeds .merged with conflict markers, as any merge run does),
+    the next carries the answer back. That seed is ccs's own scaffold --
+    `run` re-seeds it four lines above the copy rule -- so the proposal is
+    copied over it, and the run does not end on `NOT INSTALLED ... unresolved
+    conflict markers` printed over ccs's own markers. Measured on a scratch
+    world, where the two-step flow did exactly that."""
+    w = _world(tmp_path)
+    main(_ccs(w, "merge", "skills/s.md", "--ai", "--no-launch"))        # prompt + seed
+    capsys.readouterr()
+    assert b"<<<<<<<" in w["merged"].read_bytes()
+    rc = main(_ccs(w, "merge", "skills/s.md", "--ai", "--ai-response", str(_answer(tmp_path)),
+                   "--no-launch"))
+    out = capsys.readouterr().out
+    assert "copied into" in out and "no result of your own" in out, out
+    assert "NOT INSTALLED" not in out and "unresolved conflict markers" not in out, out
+    assert w["merged"].read_bytes() == PROPOSAL
+    rec = airecord.load(airecord.record_path(w["merged"]))
+    assert rec is not None and rec.copied_sha == norm_sha(PROPOSAL)
+    assert w["live_file"].read_bytes() == LIVE                  # still nothing installed
+    assert rc == EXIT_CLEAN
 
 
 def test_a_deleted_result_is_reseeded_and_not_called_the_ais_or_yours(tmp_path, capsys):

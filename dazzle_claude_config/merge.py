@@ -1318,7 +1318,7 @@ class MergeResult:
     ai: list[tuple[MergeItem, object]] = field(default_factory=list)  # (item, aistep.AiOutcome)
     ai_no_base: list[MergeItem] = field(default_factory=list)   # refused: a two-way guess is not a merge
     ai_pending: list[MergeItem] = field(default_factory=list)   # a prompt written, or a backend that failed
-    ai_copied: list[MergeItem] = field(default_factory=list)    # the proposal copied into an absent .merged
+    ai_copied: list[MergeItem] = field(default_factory=list)    # copied: no .merged, or an untouched seed
     ai_unchanged: list[MergeItem] = field(default_factory=list) # .merged is still the copied proposal
     ai_edited: list[tuple[MergeItem, int]] = field(default_factory=list)  # yours; n lines from the proposal
     ai_stale: dict[str, list[str]] = field(default_factory=dict)  # label -> the sides that moved since
@@ -1412,8 +1412,9 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
 
     `ai` (an ``aistep.AiOptions``) runs each file through the AI step: the
     proposal lands in ``<label>.merged-ai`` beside the person's file and is
-    copied into ``.merged`` only when they had no result yet; the record
-    beside it says so. `confirm_ai(item, record) -> bool` is asked before
+    copied into ``.merged`` only when the person had no result of their own
+    there -- no file, or the untouched seed this run would re-write anyway;
+    an edited result is never copied over. The record beside it says so. `confirm_ai(item, record) -> bool` is asked before
     ``--accept`` installs a proposal the person never touched; the default
     asks on a console and refuses anywhere a console is absent.
 
@@ -1537,7 +1538,15 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
         # overwritten, discarding real work done in the diff tool.
         stamp = merged.parent / (merged.name + ".seed")
         fresh = not merged.exists()
-        if fresh or (stamp.exists() and not _differs_bytes(merged, stamp)):
+        untouched = (not fresh and stamp.exists() and not _differs_bytes(merged, stamp))
+        # `yours` is the one fact the copy rule below needs, and it is decided
+        # HERE so the two cannot disagree: a file this run re-seeded is not
+        # the person's work, whether it was absent or still the scaffold ccs
+        # wrote last time. Measured on a scratch world at 23:24 -- the normal
+        # two-step flow (one run writes the prompt AND seeds .merged, the next
+        # carries the answer) left the proposal uncopied and printed
+        # "NOT INSTALLED -- unresolved conflict markers" over ccs's own seed.
+        if fresh or untouched:
             seed(item, merged, union=union, cod_ratio=cod_ratio)   # absent, or untouched
             stamp.write_bytes(merged.read_bytes())
         else:
@@ -1584,10 +1593,12 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
                     airecord.write(airecord.record_path(merged), out.record)
                     out.status = "rejected"
                     out.failures = list(v_ai.failures)
-                elif fresh:
-                    # The copy rule: the person had no result, so the proposal
-                    # becomes the file the tool and --accept work on -- and
-                    # the record says it was copied, once, never rewritten.
+                elif fresh or untouched:
+                    # The copy rule: the person had no result of their own --
+                    # no file, or the scaffold ccs seeded and nobody edited --
+                    # so the proposal becomes the file the tool and --accept
+                    # work on, and the record says it was copied, once, never
+                    # rewritten. An EDITED result is never copied over.
                     blob = out.proposal.read_bytes()
                     merged.write_bytes(blob)
                     out.record.mark_copied(blob)

@@ -767,6 +767,30 @@ def _doctor(args) -> int:
         findings.append(("info", "injection driver: not applicable here (Windows-only); "
                                  "tools that regenerate their output pane keep resumed "
                                  "files closed on this platform"))
+    # the AI merge (0.5.21): the vendored library, the configured backend, and
+    # the setting that was documented for three minor versions and never read
+    try:
+        from . import ailib as _ailib
+        _names = _ailib.backend_names()
+        _backend = str(cfg.get("ai_merge_backend") or _ailib.PROMPT_ONLY)
+        if _backend not in _names:
+            warn(f"ai_merge_backend is {_backend!r}, not one of {', '.join(_names)} -- "
+                 f"`ccs merge --ai` will refuse it")
+        elif _backend == _ailib.PROMPT_ONLY:
+            ok("ai merge: prompt-only (writes the prompt, sends nothing) -- set "
+               "ai_merge_backend or pass --ai claude|codex to use a backend")
+        elif _ailib.check_available(_backend):
+            ok(f"ai merge backend {_backend}: its CLI was found")
+        else:
+            warn(f"ai merge backend {_backend}: its CLI is not on PATH -- `ccs merge --ai` "
+                 f"will say so; prompt-only always works")
+    except Exception as e:                       # the vendored copy missing or broken
+        warn(f"ai merge library: {e} -- the vendored copy under _vendor/ailib is missing "
+             f"or broken; even prompt-only cannot run")
+    if cfg.get("ai_merge_command"):
+        warn("ai_merge_command is set but no longer read -- the AI merge is configured "
+             "with ai_merge_backend (see docs/ai-merge.md); the key was documented since "
+             "0.3.0 and never implemented")
     # manifest + seeds
     manifest = None
     if co.is_dir():
@@ -1622,7 +1646,7 @@ def _print_ai_report(r, args) -> None:
                 print("    " + c("magenta", line))
             if item in r.ai_copied:
                 print(c("dim", "    copied into ") + c("bold", ".merged")
-                      + c("dim", " (you had no result yet); ")
+                      + c("dim", " (you had no result of your own there); ")
                       + c("bold", "--accept") + c("dim", " asks before installing it"))
         elif out.status == "rejected":
             print(f"{c('bold_red', 'NOT PROPOSED')} {label} "

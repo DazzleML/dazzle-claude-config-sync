@@ -1,0 +1,126 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_doctor_ai.py",
+      "tests/test_merge_ai.py"
+    ],
+    "timestamp": "2026-09-03T23:40:07-04:00"
+  },
+  "results": [
+    {
+      "id": "cli-1",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "Membership flip: a bogus ai_merge_backend slips past and a legitimate one is called invalid.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "cli-2",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "Dropped `or` default: unset becomes the string \"None\" instead of prompt-only.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "cli-3",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "Comparison flip: prompt-only falls through to the CLI-availability check.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "cli-4",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "Negation: a missing CLI is reported found, and a present one missing.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "cli-5",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "Guard inversion: the dead key is warned about only when it is absent.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "merge-1",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Dropped negation on the absent-file fact.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "merge-2",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Dropped negation: `untouched` becomes true exactly when the file WAS edited.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "merge-3",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "and/or swap in the seed branch: a brand-new divergent file is never seeded.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "merge-4",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "and/or swap in the copy rule: a fresh file never receives the proposal.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "merge-5",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Swapped arguments on the record write in the copy branch.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "merge-6",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Wrong-list append: ai_unchanged stays empty after a successful copy.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "merge-7",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Dropped guard: with no stamp on disk the comparison is made against a file that is not there.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 10,
+    "survived": 2
+  },
+  "anomalies": []
+}

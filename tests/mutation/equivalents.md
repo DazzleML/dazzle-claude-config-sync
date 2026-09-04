@@ -204,6 +204,16 @@ git hash-object (first 12). Only separated-generation runs (modes 1-2) write her
   that line exists), so the searched list is the same. Re-triage if the
   HEAD re-insertion ever goes.
 
+## dazzle_claude_config/merge.py @ 274453340615
+
+- merge-7 (v0.5.21 sweep, the doctor lines + the copy rule, mode 1,
+  2026-09-03): `untouched = (not fresh and stamp.exists() and not
+  _differs_bytes(merged, stamp))` -> the `stamp.exists()` clause dropped.
+  **equivalent** -- with no `.seed` on disk `_differs_bytes` catches the
+  `OSError` and returns True (merge.py:1079), so `untouched` is False
+  either way; the clause states the intent and saves a raise. Re-triage if
+  `_differs_bytes` ever stops treating an unreadable file as differing.
+
 ## dazzle_claude_config/livegit.py @ c1e9c2453f02
 
 - M19 (v0.5.21 sweep): the `rc != 0` half of the `rev-parse` guard dropped.

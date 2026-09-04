@@ -1,0 +1,22 @@
+{
+ "test_command": [
+  "python",
+  "-B",
+  "-m",
+  "pytest",
+  "-q",
+  "-p",
+  "no:cacheprovider",
+  "tests/test_doctor_ai.py",
+  "tests/test_merge_ai.py"
+ ],
+ "mutations": [
+  {
+   "id": "cli-2",
+   "file": "dazzle_claude_config/cli.py",
+   "original": "str(cfg.get(\"ai_merge_backend\") or _ailib.PROMPT_ONLY)",
+   "mutated": "str(cfg.get(\"ai_merge_backend\"))",
+   "note": "re-verify after the killing test"
+  }
+ ]
+}

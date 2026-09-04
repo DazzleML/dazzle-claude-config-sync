@@ -194,6 +194,7 @@ Exit codes: 0 resolved (or installed), 1 something was refused, 2 an error, 4 a 
 ## See also
 
 - `three-way-merge.md` -- the merge window itself, for the first time
+- `ai-merge.md` -- `--ai`: a model resolves the hunks both sides changed, under rules you wrote, into a file beside yours; it installs nothing
 - `sync-loop.md` -- the whole loop, and why `status` fetches first
 - `ccs merge -h` -- the commands, short form
 - `tests/checklists/v0.4.3__Feature__adoption-merge-supplied-base-and-honoured-deletions.md` -- the human test checklist, with a scratch world you can practise on

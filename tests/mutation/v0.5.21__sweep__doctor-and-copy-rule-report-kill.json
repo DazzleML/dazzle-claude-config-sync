@@ -1,0 +1,37 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_doctor_ai.py",
+      "tests/test_merge_ai.py"
+    ],
+    "timestamp": "2026-09-03T23:41:21-04:00"
+  },
+  "results": [
+    {
+      "id": "cli-2",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "re-verify after the killing test",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 1
+  },
+  "anomalies": []
+}
