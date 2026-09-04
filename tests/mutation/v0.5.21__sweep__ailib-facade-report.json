@@ -1,0 +1,117 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_vendored_ailib.py"
+    ],
+    "timestamp": "2026-09-03T19:17:02-04:00"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "Takes the FIRST fenced json block instead of the last, so a revised block is ignored.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M2",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "Removes the invalid-JSON guard so malformed JSON raises instead of returning None.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M3",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "None-vs-truthiness: empty string no longer short-circuits, changing the empty-input path.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "Dropped empty-list guard: no fenced block now raises IndexError instead of returning None.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M5",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "Comparison flip: the scratch directory is used only when an explicit cwd was given.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M6",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "Cleanup skipped: the caller's working directory is never restored after invoke.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M7",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "try/finally removed: a raising backend leaves the process in the scratch directory and leaks it.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M8",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "Swapped arguments: verbose and timeout are passed to each other's parameter.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M9",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "Wrong registry key: the prompt-only backend name no longer matches PROMPT_ONLY.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M10",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "Wrong element of the split: the registry points at a bogus package instead of the vendored copies.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M11",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "Dropped normalisation: prompt-only writes one directory above the requested location.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 9,
+    "survived": 2
+  },
+  "anomalies": []
+}

@@ -4,6 +4,12 @@ All notable changes to dazzle-claude-config (ccs) are documented here. Format fo
 
 ## [Unreleased]
 
+### Added
+- **The AI library ccs will merge with, vendored.** wtf-windows' `lib/ai` (the `claude` / `codex` / `prompt-only` backends, the prompt runner and its response cache -- six files, 657 lines) now ships inside ccs under `dazzle_claude_config/_vendor/ailib/`, copied byte-for-byte with a record beside it (`_VENDORED.md`: where it came from, the hash of every file, what would have to change to swap in the standalone library later). ccs reaches it only through `dazzle_claude_config/ailib.py`, which points the backend registry at the copy, runs the CLI backends from a throwaway directory so a project's own instruction files never leak into a prompt about your configuration, and reads the one fenced JSON block a merge answer will carry. Two tests guard the copy: nothing under `_vendor/` may import or mention ccs, and the bytes on disk must match the record. No dependency was added.
+
+### Changed
+- The no-base prompt and the `NOT INSTALLED` lines keep your diff tool's own words for the two sides, glossed: `ours (your live file)` and `theirs (the payload's copy)`; the mixed-case closing sentence reads `the payload's (by the payload), yours (by you)`.
+
 ## [0.5.20] - 2026-09-03
 
 ### Changed

@@ -1,0 +1,109 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_vendored_ailib.py"
+    ],
+    "timestamp": "2026-09-03T19:22:31-04:00"
+  },
+  "results": [
+    {
+      "id": "N1",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "DOTALL dropped: a multi-line JSON body no longer matches, only single-line blocks parse",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N2",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "fence pattern loosened: a ```python or ```text block is now treated as a JSON block",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N3",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "scratch dir removed while still the cwd -- cleanup ordered before the chdir back",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N4",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "backend_names returns module paths instead of the selectable names (keys)",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N5",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "availability polarity inverted -- installed backends report unavailable and vice versa",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N6",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "except narrowed: a non-JSONDecodeError ValueError from json.loads now escapes instead of yielding None",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N7",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "cache_read/cache_write re-exports swapped",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N8",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "TTL constant re-export points at the wrong analyzer attribute (a function, not the seconds)",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N9",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "chdir target wrong: the scratch dir is created but the backend still runs in the caller's directory",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N10",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "PROMPT_ONLY constant misspelled -- no longer matches its registry key",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "survived": 6,
+    "killed": 4
+  },
+  "anomalies": []
+}

@@ -181,7 +181,7 @@ Servers rarely have Beyond Compare. Three options, in the order to try them:
 | message | meaning | what to do |
 |---|---|---|
 | `unresolved conflict markers` | you saved the file with `<<<<<<<` still in it | open it again and finish |
-| `N line(s) that your live file / the payload's copy has are missing from the result` | a line one side *added* is gone from your result, not replaced by a rewrite | put it back, or -- no base only -- answer the prompt |
+| `N line(s) that ours (your live file) / theirs (the payload's copy) has are missing from the result` | a line one side *added* is gone from your result, not replaced by a rewrite | put it back, or -- no base only -- answer the prompt |
 | `N line(s) in the result appear in neither side nor the base` | invented content: the tool is not a place to write new text | take it out; edit the live file after the merge |
 | `content was duplicated` | the same substantial line landed twice (usually `--union`) | remove one |
 | `content lost: 'name' was present on an input side` | a named probe (something the manifest or a hint asked to preserve) is gone | put it back |

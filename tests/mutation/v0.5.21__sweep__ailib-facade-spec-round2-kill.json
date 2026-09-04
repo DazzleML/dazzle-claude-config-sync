@@ -1,0 +1,10 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_vendored_ailib.py"],
+  "mutations": [
+    {"id": "N1", "file": "dazzle_claude_config/ailib.py", "original": "_JSON_FENCE = re.compile(r\"```json[ \\t]*\\r?\\n(.*?)\\r?\\n[ \\t]*```\", re.DOTALL | re.IGNORECASE)", "mutated": "_JSON_FENCE = re.compile(r\"```json[ \\t]*\\r?\\n(.*?)\\r?\\n[ \\t]*```\", re.IGNORECASE)", "note": "re-run after test_parse_json_block_reads_a_multi_line_body"},
+    {"id": "N2", "file": "dazzle_claude_config/ailib.py", "original": "```json[ \\t]*\\r?\\n(.*?)\\r?\\n[ \\t]*```\", re.DOTALL | re.IGNORECASE)", "mutated": "```[a-z]*[ \\t]*\\r?\\n(.*?)\\r?\\n[ \\t]*```\", re.DOTALL | re.IGNORECASE)", "note": "re-run after test_parse_json_block_ignores_fences_of_other_languages"},
+    {"id": "N3", "file": "dazzle_claude_config/ailib.py", "original": "    finally:\n        os.chdir(before)\n        if scratch is not None:\n            shutil.rmtree(scratch, ignore_errors=True)", "mutated": "    finally:\n        if scratch is not None:\n            shutil.rmtree(scratch, ignore_errors=True)\n        os.chdir(before)", "note": "re-run after test_invoke_removes_the_scratch_directory_afterwards"},
+    {"id": "N7", "file": "dazzle_claude_config/ailib.py", "original": "cache_read = _analyzer._cache_read\ncache_write = _analyzer._cache_write", "mutated": "cache_read = _analyzer._cache_write\ncache_write = _analyzer._cache_read", "note": "re-run after test_cache_reexports_round_trip"},
+    {"id": "N8", "file": "dazzle_claude_config/ailib.py", "original": "CACHE_TTL_SECONDS = _analyzer._CACHE_TTL_SECONDS", "mutated": "CACHE_TTL_SECONDS = _analyzer._cache_key", "note": "re-run after test_cache_reexports_round_trip"}
+  ]
+}

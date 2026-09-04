@@ -84,3 +84,21 @@ git hash-object (first 12). Only separated-generation runs (modes 1-2) write her
   section depend on an invariant stated nowhere. Verified by calling
   `plan_config` on an empty directory: `exists=False, unknown=[]`.
   Re-triage if `plan_config` ever reports unknown keys for an absent file.
+
+## dazzle_claude_config/ailib.py @ 2eeaa3628001
+
+- M3 (v0.5.21 sweep, ailib facade): `if not text:` -> `if text is None:` in
+  `parse_json_block`. **equivalent** -- an empty string reaches
+  `_JSON_FENCE.findall("")`, which returns `[]`, and the next guard
+  (`if not blocks: return None`) yields the same `None` the short-circuit
+  did. No input distinguishes the two forms. (2026-09-03, generation mode 1;
+  9 of 11 killed in round 1, M8 killed by `test_invoke_forwards_verbose_and_timeout_by_name`
+  written on the spot.) Re-triage if the empty-string path ever gains a
+  different meaning (e.g. an "empty answer" diagnostic).
+- N6 (v0.5.21 sweep, round 2): `except ValueError:` -> `except
+  json.JSONDecodeError:` around `json.loads(blocks[-1])`. **equivalent** --
+  `blocks[-1]` is always a `str` (a regex group), and for a `str` argument
+  `json.loads` raises only `JSONDecodeError`, which is the `ValueError`
+  subclass; no other `ValueError` can reach the handler. (2026-09-03, mode 1;
+  round 2 of 2: N1, N2, N3, N7, N8 were killable and became tests.)
+  Re-triage if `parse_json_block` ever passes bytes or a custom decoder.

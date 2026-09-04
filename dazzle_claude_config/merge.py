@@ -1144,8 +1144,10 @@ def validate(item: MergeItem, merged: Path,
             dropped = [l for l in dropped if l.strip() not in base_lines]
         if dropped:
             res.lost[side] = dropped
+            # The pane's word first (ours/theirs is what the diff tool shows),
+            # the plain gloss beside it -- the maintainer's wording, 2026-09-03.
             res.failures.append(
-                f"{_LOSS_PREFIX} {len(dropped)} line(s) that {_side_name(side)} has are "
+                f"{_LOSS_PREFIX} {len(dropped)} line(s) that {side} ({_side_name(side)}) has are "
                 f"missing from the result, not replaced "
                 f"(first: {_excerpt(sorted(dropped)[0], 70)!r})")
 
@@ -1673,8 +1675,8 @@ def _ask_loss_on_console(item: MergeItem, v: ValidationResult) -> bool:
         first = f"If the payload removed {those} on purpose, install the result: "
         second = f"If {they} should have stayed, answer "
     else:
-        first = ("If each of those lines was dropped on purpose -- the payload's by the "
-                 "payload, yours by you -- install the result: ")
+        first = ("If each of those lines was dropped on purpose -- the payload's (by the "
+                 "payload), yours (by you) -- install the result: ")
         second = "If any of them should have stayed, answer "
     print(f"  {first}{c('bold', 'y')}.")
     try:
