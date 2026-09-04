@@ -130,6 +130,10 @@ KEYS: dict[str, Key] = _attach_explanations({
 
     "ai_merge_command": Key(default=None, env="CCS_AI_MERGE_COMMAND"),
 
+    "ai_merge_backend": Key(
+        default="prompt-only", env="CCS_AI_MERGE_BACKEND",
+        choices=frozenset({"claude", "codex", "prompt-only"})),
+
     "interactive": Key(default=True, env="CCS_INTERACTIVE"),
 
     "status_detail": Key(

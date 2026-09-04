@@ -29,6 +29,7 @@ You do not need this page to answer a question about one setting -- `--explain <
 | [`on_divergence`](#on_divergence) | `"prompt"` | `CCS_ON_DIVERGENCE` |
 | [`difftool`](#difftool) | `null` | `CCS_DIFFTOOL` |
 | [`ai_merge_command`](#ai_merge_command) | `null` | `CCS_AI_MERGE_COMMAND` |
+| [`ai_merge_backend`](#ai_merge_backend) | `"prompt-only"` | `CCS_AI_MERGE_BACKEND` |
 | [`interactive`](#interactive) | `true` | `CCS_INTERACTIVE` |
 | [`status_detail`](#status_detail) | `"auto"` | `CCS_STATUS_DETAIL` |
 | [`status_max_lines`](#status_max_lines) | `30` | `CCS_STATUS_MAX_LINES` |
@@ -56,7 +57,13 @@ The git difftool to force for `ccs diff` and `ccs merge`. Unset means resolve it
 
 **Default:** `null` &middot; **Environment:** `CCS_AI_MERGE_COMMAND`
 
-Shell command for AI-assisted merge; unset disables the option entirely. It receives the base, your version and the output path as $CCS_BASE, $CCS_OURS and $CCS_OUT. Left unset on purpose: AI costs money, so it is opt-in per machine.
+No longer read. It was documented since 0.3.0 as a shell command receiving $CCS_BASE, $CCS_OURS and $CCS_OUT and was never implemented; the AI merge that shipped in 0.5.21 is configured with ai_merge_backend instead. The key stays so an older config file is not called malformed, and `ccs doctor` says so when it is set.
+
+### ai_merge_backend
+
+**Default:** `"prompt-only"` &middot; **Environment:** `CCS_AI_MERGE_BACKEND` &middot; **One of:** `claude`, `codex`, `prompt-only`
+
+Which backend `ccs merge --ai` asks when the flag names none: claude (the Claude Code CLI), codex (the Codex CLI), or prompt-only, which writes the prompt to ~/claude/ccs-merge-rules/_prompts/ for you to carry to any model and answers nothing. prompt-only is the default on purpose: it costs nothing and sends nothing anywhere. Whichever answers, the proposal lands beside your file as <file>.merged-ai and nothing installs without --accept.
 
 ### interactive
 

@@ -147,3 +147,33 @@ git hash-object (first 12). Only separated-generation runs (modes 1-2) write her
   string it is. (2026-09-03, mode 1; N2, N3, N6, N9, N11 became tests.)
   Re-triage if the cache directory is ever shared with another tool whose
   namespace could be the same word.
+
+## dazzle_claude_config/cli.py @ f1449234833d
+
+- M14 (v0.5.21 sweep, the --ai wiring): the `or aistep.PROMPT_ONLY`
+  fallback in `_ai_options` -> `or "auto"`. **equivalent under the default**
+  -- `userconfig.KEYS["ai_merge_backend"]` defaults to `prompt-only`, so
+  `cfg.get(...)` is never empty unless a config file sets the key to null;
+  the fallback is defence, not a path. (2026-09-03, mode 1.) Re-triage if
+  the key's default ever becomes None.
+- M15 (same sweep): the two exit-code checks after `unresolved` swapped
+  (`EXIT_NO_BASE` before `EXIT_DRIFT` for a pending prompt or a declined
+  proposal). **don't-care** -- both fire only when a run holds a no-base
+  refusal AND a pending/declined item at once, both codes mean "work
+  pending", and the refusal line is printed either way. (2026-09-03,
+  mode 1.) Re-triage if a caller ever branches on 2 vs 1 for --ai.
+
+## dazzle_claude_config/merge.py @ 85a6412c372e
+
+- N6 (v0.5.21 sweep, the --ai wiring, round 2): `_line_delta(merged,
+  proposal)` -> `_line_delta(proposal, merged)`. **equivalent** -- the count
+  is `max(i2 - i1, j2 - j1)` per non-equal opcode, symmetric in its two
+  sequences. (2026-09-03, mode 1.) Re-triage if the count ever weights the
+  sides differently.
+- N1 (same round): `if i.mergeable and i.base is None` -> `if i.base is
+  None` in the `--ai` refusal. **don't-care** -- the only item it reaches
+  that the guarded form does not is one already refused for another reason
+  (a render/compose strategy, a settled seed), whose `reason` it rewords;
+  the item is refused either way and no exit code changes. Not worth a
+  fixture with a refused-by-strategy entry. (2026-09-03, mode 1.)
+  Re-triage if a refusal reason is ever machine-read.

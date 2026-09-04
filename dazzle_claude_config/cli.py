@@ -1007,6 +1007,21 @@ day to day, once it is installed:
                             help="with --relaunch: reopen WITHOUT restoring your "
                                  "edits -- the tool regenerates its output and "
                                  "your prior work in that file is discarded")
+            sp.add_argument("--ai", nargs="?", const="auto", default=None, metavar="BACKEND",
+                            help="ask a model to resolve the hunks both sides changed, "
+                                 "under the rules you wrote (~/claude/ccs-merge-rules/); "
+                                 "the proposal lands in <file>.merged-ai beside yours and "
+                                 "installs nothing. BACKEND: claude, codex, or prompt-only "
+                                 "(writes the prompt for you to carry anywhere; the "
+                                 "default unless ai_merge_backend is set)")
+            sp.add_argument("--ai-response", default=None, metavar="FILE",
+                            help="with --ai: apply an answer you carried back (one JSON "
+                                 "block, as the prompt asks) instead of calling a backend")
+            sp.add_argument("--ai-refresh", action="store_true",
+                            help="with --ai: ask the backend again even if the same "
+                                 "inputs were answered before (the answer is cached)")
+            sp.add_argument("--ai-verbose", action="store_true",
+                            help="with --ai: stream the backend's output as it arrives")
         if verb in ("merge", "diff"):
             sp.add_argument("--base-file", default=None, metavar="FILE",
                             help="use FILE as the common ancestor instead of "
@@ -1046,6 +1061,9 @@ day to day, once it is installed:
             sp.add_argument("path", nargs="?", default=None,
                             help="show the actual line-by-line difference for one "
                                  "file (default: list which files differ)")
+            sp.add_argument("--ai", action="store_true",
+                            help="with a path: open the AI's proposal (<file>.merged-ai) "
+                                 "beside your result (<file>.merged) in your diff tool")
             sp.add_argument("--difftool", nargs="?", const=2, type=int, choices=(2, 3),
                             default=None, metavar="{2,3}",
                             help="open the file in your diff tool instead of printing: "
@@ -1512,6 +1530,134 @@ def _launch_file_difftool(all_diffs, wanted: str, tool: str | None, *, supplied=
     note = " (identical -- opened anyway, you asked)" if same else ""
     print(c("dim", f"opened {name}: checkout/{repo} vs live/{target}{note}"))
     return EXIT_CLEAN if same else EXIT_DRIFT
+
+
+def _launch_ai_diff(all_diffs, wanted: str, tool: str | None, *, checkout, roots,
+                    manifest, box_tags=frozenset()) -> int:
+    """`ccs diff <path> --ai`: the AI's proposal beside the person's result,
+    in the two-pane tool. With two files on disk the person must be able
+    to SEE what differs before `--accept` installs theirs -- and it installs
+    theirs, never the proposal."""
+    from . import airecord
+    want = wanted.replace(chr(92), "/").strip("/")
+    try:
+        found = _resolve_pair(all_diffs, want, manifest=manifest, checkout=checkout,
+                              roots=roots, box_tags=box_tags)
+    except AmbiguousPath as e:
+        _print_ambiguous(e)
+        return EXIT_ERROR
+    if found is None:
+        print(c("yellow", f"no file matches {wanted!r}")
+              + c("dim", " -- run `ccs diff` with no argument to list what differs"))
+        return EXIT_CLEAN
+    lv, rp, target, repo_label = found
+    ws = merge.workspace_for(roots)
+    merged = ws / (target.replace("/", "__").replace(chr(92), "__") + ".merged")
+    proposal = airecord.proposal_path(merged)
+    if not proposal.is_file():
+        print(c("yellow", f"no AI proposal for {target}")
+              + c("dim", f" -- ccs merge {target} --ai writes one beside your result"))
+        return EXIT_CLEAN
+    yours = merged if merged.is_file() else lv
+    name = merge.resolve_difftool(tool)
+    merge.launch_difftool(name, proposal, yours)
+    whose = merged.name if merged.is_file() else f"live/{target}"
+    print(c("dim", f"opened {name}: the AI's proposal ({proposal.name}) vs yours ({whose}); "
+                   f"--accept installs yours, never the proposal"))
+    return EXIT_CLEAN
+
+
+def _ai_options(args, roots):
+    """The `--ai` flags and the config key, as one object for merge.run --
+    or None after printing why not."""
+    from . import ailib, airules, aistep
+    cfg = userconfig.load(roots["USER_CLAUDE"])
+    backend = args.ai if args.ai != "auto" else (cfg.get("ai_merge_backend") or aistep.PROMPT_ONLY)
+    names = ailib.backend_names()
+    if backend not in names:
+        print(c("red", f"unknown AI backend {backend!r}")
+              + c("dim", f" -- one of: {', '.join(names)}"))
+        return None
+    user = roots["USER_CLAUDE"]
+    return aistep.AiOptions(
+        rules_dir=airules.rules_dir(user), prompts_dir=airules.prompts_dir(user),
+        cache_dir=user / "cache" / "ccs-ai", backend=backend,
+        refresh=bool(getattr(args, "ai_refresh", False)),
+        verbose=bool(getattr(args, "ai_verbose", False)),
+        response=pathlib.Path(args.ai_response) if getattr(args, "ai_response", None) else None)
+
+
+def _n_lines(n: int) -> str:
+    return f"{n} line{'' if n == 1 else 's'}"
+
+
+def _print_ai_report(r, args) -> None:
+    """The `--ai` lines of the merge report, in #54's vocabulary: staged,
+    never merged, for anything not installed; and every claim about the
+    proposal read from its record."""
+    for item in r.ai_no_base:
+        pass  # printed with the other refusals (item.reason carries the sentence)
+    for item, out in r.ai:
+        label = item.label
+        if out.status == "no-hunks":
+            print(c("dim", f"ai  {label} -- no hunk both sides changed; git resolved the "
+                           f"file, nothing for the model to decide"))
+        elif out.status == "prompt-written":
+            print(f"{c('cyan', 'prompt written')} {label} {c('dim', '-- ' + str(out.prompt_path))}")
+            print(c("dim", "    answer it as one JSON block into ") + c("bold", str(out.response_path))
+                  + c("dim", f" (or pass --ai-response FILE), then re-run ")
+                  + c("bold", f"ccs merge {label} --ai"))
+            for line in out.reports:
+                print("    " + c("magenta", line))
+        elif out.status == "proposed":
+            how = out.backend + (", cached" if out.cached else "")
+            print(f"{c('green', 'staged')} {label} "
+                  + c("dim", f"-- the AI's proposal ({how}) at {out.proposal}; "
+                             f"validation passed; nothing installed"))
+            print(c("dim", f"    {out.rules}"))
+            for n, rules, why in out.rationales:
+                cite = f" [{', '.join(rules)}]" if rules else ""
+                print(c("dim", f"    hunk {n}: {why}{cite}"))
+            for line in out.reports:
+                print("    " + c("magenta", line))
+            if item in r.ai_copied:
+                print(c("dim", "    copied into ") + c("bold", ".merged")
+                      + c("dim", " (you had no result yet); ")
+                      + c("bold", "--accept") + c("dim", " asks before installing it"))
+        elif out.status == "rejected":
+            print(f"{c('bold_red', 'NOT PROPOSED')} {label} "
+                  + c("dim", f"-- the answer failed the check ({out.backend})"))
+            for f in out.failures:
+                print("    " + c("red", f))
+            if out.proposal is not None and out.proposal.is_file():
+                print(c("dim", f"    the assembled file is at {out.proposal} for your eyes; "
+                               f"nothing was copied, nothing installed"))
+        elif out.status == "backend-failed":
+            print(f"{c('red', 'ai failed')} {label} {c('dim', '-- ' + out.error)}")
+    for item in r.ai_unchanged:
+        if item in r.ai_copied:
+            continue                          # said above, on the proposal's own line
+        rec = r.ai_records[item.label]
+        when = (rec.created or "")[:10]
+        stale = r.ai_stale.get(item.label)
+        if stale:
+            moved = " and ".join(stale)
+            print(f"{c('yellow', 'staged')} {item.label} "
+                  + c("dim", f"-- the AI's proposal from {when}; {moved} ")
+                  + c("yellow", "has changed since")
+                  + c("dim", f" -- re-run ccs merge {item.label} --ai; nothing installed"))
+        else:
+            print(f"{c('cyan', 'staged')} {item.label} "
+                  + c("dim", f"-- the AI's proposal, unchanged since {when}; nothing installed"))
+    for item, n in r.ai_edited:
+        print(f"{c('cyan', 'staged')} {item.label} "
+              + c("dim", f"-- yours; differs from the AI's proposal ({_n_lines(n)}); nothing installed"))
+        print("    " + c("bold", f"ccs diff {item.label} --ai") + c("dim", " opens them side by side; ")
+              + c("bold", "--accept installs YOURS") + c("dim", ", not the proposal"))
+    for item in r.ai_declined:
+        print(f"{c('yellow', 'not installed')} {item.label} "
+              + c("dim", "-- the AI's proposal was not confirmed as reviewed; "
+                         f"open it (ccs diff {item.label} --ai) and --accept again"))
 
 
 def _launch_three_way(lv, rp, target, repo_label, tool, checkout, roots, repo,
@@ -2656,6 +2802,11 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.verb == "merge":
             blob, label = _supplied_base(args)
+            ai_opts = None
+            if args.ai is not None:
+                ai_opts = _ai_options(args, roots)
+                if ai_opts is None:
+                    return EXIT_ERROR
             r = merge.run(manifest, checkout, roots, tool=args.tool,
                           box_tags=box.tags, repo=repo,
                           dry_run=args.dry_run, accept=args.accept, only=args.only,
@@ -2665,7 +2816,7 @@ def main(argv: list[str] | None = None) -> int:
                                           .get("merge_inject", "ask")),
                           preview=args.preview, base_mode=args.base,
                           base_override=blob, base_label=label,
-                          cod_ratio=args.block_swap_ratio)
+                          cod_ratio=args.block_swap_ratio, ai=ai_opts)
             for item in (i for i in r.resolved + r.previewed + [i for i, _ in r.unresolved]
                          if i.base_supplied and i.cod is not None):
                 st = item.cod
@@ -2721,6 +2872,7 @@ def main(argv: list[str] | None = None) -> int:
                       + c("dim", "-- the tool saved over your unverified edits; ccs put them back"))
             for why in r.registry_errors:
                 print(c("yellow", f"merge-tools.json (yours): {why} -- ignored; the packaged table stands"))
+            _print_ai_report(r, args)
             held = [i for i in r.resumed if i not in r.reopened and i not in r.injected
                     and i not in r.discarded and all(i is not j for j, _ in r.inject_refused)]
             if held and not args.no_launch and not args.relaunch:
@@ -2801,11 +2953,10 @@ def main(argv: list[str] | None = None) -> int:
                 # then the paid one.
                 for h in merge.resolution_hints(item):
                     print("    " + c("yellow", "hint") + " " + c("dim", h))
-                print("    " + c("dim", "still stuck? ") + c("bold", "--ai") +
-                      c("dim", " proposes a resolution you review in the same "
-                               "3-way view (set ai_merge_command in "
-                               "~/claude/ccs-config.json; a local model works "
-                               "and costs nothing)"))
+                print("    " + c("dim", "still stuck? ") + c("bold", f"ccs merge {item.label} --ai") +
+                      c("dim", " proposes a resolution under rules you write "
+                               "(~/claude/ccs-merge-rules/), beside your file, and "
+                               "installs nothing; prompt-only needs no backend"))
             if r.backup_dir:
                 print(c("dim", f"originals backed up: {r.backup_dir}"))
             if r.workspace:
@@ -2813,14 +2964,18 @@ def main(argv: list[str] | None = None) -> int:
             # r.previewed counts: a preview resolves nothing by design, so
             # reporting "nothing to do" right after listing a previewed file
             # contradicts the line printed immediately above it.
-            if not (r.refused or r.planned or r.resolved
-                    or r.unresolved or r.previewed):
+            if not (r.refused or r.planned or r.resolved or r.unresolved or r.previewed
+                    or r.ai or r.ai_unchanged or r.ai_edited or r.ai_declined or r.ai_pending):
                 print(c("green", "merge: nothing to do")
                       + " -- no file differs on both sides")
             # Validation failure is the alarm this whole verb exists for: a
             # tool exiting 0 is NOT evidence the merge kept both sides.
             if r.unresolved:
                 return merge.EXIT_VALIDATION
+            if r.ai_no_base and not r.resolved:
+                return merge.EXIT_NO_BASE
+            if r.ai_pending or r.ai_declined:
+                return EXIT_DRIFT                 # a prompt to answer, or a no
             return EXIT_DRIFT if r.refused else EXIT_CLEAN
 
         # status / diff
@@ -2844,6 +2999,10 @@ def main(argv: list[str] | None = None) -> int:
             # "merged and installed" is a claim; this is how you check it.
             wanted = getattr(args, "path", None)
             if wanted:
+                if getattr(args, "ai", False):
+                    return _launch_ai_diff(all_diffs, wanted, getattr(args, "tool", None),
+                                           checkout=checkout, roots=roots, manifest=manifest,
+                                           box_tags=box.tags)
                 ways = getattr(args, 'difftool', None)
                 if ways:
                     return _launch_file_difftool(all_diffs, wanted,
