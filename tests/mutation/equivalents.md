@@ -117,3 +117,13 @@ git hash-object (first 12). Only separated-generation runs (modes 1-2) write her
   its `lines` is the empty default, so `[:context]` of it is `[]`, exactly
   what the guarded form leaves in place. (2026-09-03, mode 1; N1, N7, N10
   became tests.) Re-triage if `Segment.lines` ever carries text for a hunk.
+
+## dazzle_claude_config/airecord.py @ 43afd72b17ba
+
+- M7 (v0.5.21 sweep, the provenance record): `path.is_file()` ->
+  `path.exists()` at the top of `load`. **equivalent** -- a directory at
+  the record path then reaches `read_text`, which raises an `OSError`
+  (`IsADirectoryError` / `PermissionError`) that the very next `except
+  (OSError, ValueError)` turns into the same `None`. (2026-09-03, mode 1;
+  M4, M6, M8, M9, M10 became tests.) Re-triage if the read ever moves out
+  of that `try`.
