@@ -49,6 +49,8 @@ class AiOptions:
     verbose: bool = False          # --ai-verbose: stream the backend
     response: Path | None = None   # --ai-response FILE: an answer carried back
     timeout: int = 120
+    endpoint: str | None = None    # lmstudio: the OpenAI-compatible server
+    model: str | None = None       # lmstudio: the model id to pin, "" = whatever is loaded
 
 
 @dataclass
@@ -119,6 +121,13 @@ def ai_step(*, label: str, ours: Path, base: Path, theirs: Path, merged: Path,
 
     fingerprint = {"base": norm_sha(b), "ours": norm_sha(o), "theirs": norm_sha(t),
                    "rules": rules.sha, "base_kind": base_kind, **(facts or {})}
+    if opts.backend == ailib.LMSTUDIO:
+        # The backend name alone identifies a CLI, but not a local server:
+        # one endpoint serves many models, and two models are two answerers.
+        # Without this, swapping the model returns the previous one's answer
+        # from cache and the person concludes the model ignored them.
+        fingerprint["endpoint"] = opts.endpoint or ""
+        fingerprint["model"] = opts.model or ""
     key = ailib.cache_key(fingerprint, opts.backend, TOOL_NAME)
 
     # -- the answer ------------------------------------------------------------
@@ -138,9 +147,15 @@ def ai_step(*, label: str, ours: Path, base: Path, theirs: Path, merged: Path,
         out.prompt_path = path
         return out
     else:
+        if opts.backend == ailib.LMSTUDIO:
+            # A server-shaped backend is told where to look before it is
+            # asked whether it is there; the CLI ones discover themselves.
+            ailib.set_local(opts.endpoint, opts.model)
         if not ailib.check_available(opts.backend):
             out.status = "backend-failed"
-            out.error = f"backend {opts.backend!r} is not available (its CLI was not found)"
+            out.error = (f"backend {opts.backend!r} is not available "
+                         + (f"({ailib.local_describe()})" if opts.backend == ailib.LMSTUDIO
+                            else "(its CLI was not found)"))
             return out
         if not opts.refresh:
             hit = ailib.cache_read(key, opts.backend, opts.cache_dir)

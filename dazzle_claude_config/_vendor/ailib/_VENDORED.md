@@ -28,6 +28,18 @@ Hashes are sha256 over the LF-normalised bytes (`\r\n` -> `\n`), because `backen
 
 657 lines in six files.
 
+## Authored here, for upstream
+
+`backends/lmstudio.py` was **written in this repository**, not copied. It is in this tree rather than in ccs's own package because a backend for a local OpenAI-compatible server (LM Studio, Ollama, llama.cpp) is something the shared library wants -- the other three backends are CLI-shaped, and every consumer that cares about keeping text on its own network needs this shape. Holding it outside would have meant ccs owning a file every other consumer would have to reimplement.
+
+It carries no hash below, because there is nothing upstream for it to drift **from** yet. What binds it instead is the purity rule, which the test applies to every file in this tree without distinction: no import of ccs, no relative import climbing out of `_vendor/ailib`, none of ccs's tokens, and standard library only. That is exactly the property that lets it be lifted into `wtf-windows`' `lib/ai/backends/` as a file copy.
+
+The shape is deliberately caller-agnostic: the backend takes the answer's JSON schema through `set_schema` rather than knowing one. ccs's merge schema lives in `aiprompt.ANSWER_SCHEMA` and is handed over by `ailib.set_local`. The mechanism is the library's; the meaning stays with whoever is asking.
+
+**When it goes upstream:** delete it here, add its path to the copied-files table with its hash, and change nothing else -- the registry entry in `ailib.py` already spells `_BACKENDS_PKG + ".lmstudio"`, which resolves to the same place either way.
+
+**Still worth contributing, not yet moved:** two things in `ailib.py` are generic rather than ccs-specific -- running a CLI backend from a throwaway working directory (so a consumer's own instruction files cannot leak into a prompt), and reading the LAST fenced ```json block from a reply. Both would have to go into `analyzer.py`, which IS upstream's file, and editing it would break the byte-verbatim guarantee that makes the rest of this record meaningful. They belong in the same contribution as the backend, made upstream first and copied back.
+
 ## Local edits
 
 None. Anything ccs needs that the copy does not provide lives in the facade (below). If an edit here ever becomes unavoidable, list it in this section with the design document that required it, and refresh the hash above in the same commit -- the drift test fails otherwise, on purpose.

@@ -32,6 +32,32 @@ from .airules import Rules
 PROPOSAL_PREFIX = "proposal:"
 TEMPLATE = Path(__file__).parent / "prompts" / "ai-merge.md"
 
+#: The answer's shape, as a strict JSON schema, for backends that can enforce
+#: one before a token is generated (a local server does; a CLI does not). It
+#: lives HERE, beside `parse_response` and `check_proposal`, because the shape
+#: is ccs's contract -- a backend supplies the mechanism and never the meaning.
+ANSWER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "hunks": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "hunk": {"type": "integer"},
+                    "lines": {"type": "array", "items": {"type": "string"}},
+                    "rules": {"type": "array", "items": {"type": "string"}},
+                    "rationale": {"type": "string"},
+                },
+                "required": ["hunk", "lines", "rules", "rationale"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["hunks"],
+    "additionalProperties": False,
+}
+
 _OURS = "O (your live file)"
 _BASE = "B (the common ancestor)"
 _THEIRS = "T (the payload's copy)"

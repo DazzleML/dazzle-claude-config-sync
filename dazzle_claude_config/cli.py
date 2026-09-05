@@ -779,6 +779,15 @@ def _doctor(args) -> int:
         elif _backend == _ailib.PROMPT_ONLY:
             ok("ai merge: prompt-only (writes the prompt, sends nothing) -- set "
                "ai_merge_backend or pass --ai claude|codex to use a backend")
+        elif _backend == _ailib.LMSTUDIO:
+            # Not "is a file there" but "is a server there, with a model" --
+            # and the sentence has to say which, or a person restarts the
+            # wrong thing.
+            _ailib.set_local(cfg.get("ai_merge_endpoint") or None,
+                             cfg.get("ai_merge_model") or None)
+            _line = _ailib.local_describe()
+            _well = _ailib.check_available(_backend) and not _ailib.local_context_is_roomy()
+            (ok if _well else warn)(f"ai merge backend lmstudio: {_line}")
         elif _ailib.check_available(_backend):
             ok(f"ai merge backend {_backend}: its CLI was found")
         else:
@@ -1035,9 +1044,10 @@ day to day, once it is installed:
                             help="ask a model to resolve the hunks both sides changed, "
                                  "under the rules you wrote (~/claude/ccs-merge-rules/); "
                                  "the proposal lands in <file>.merged-ai beside yours and "
-                                 "installs nothing. BACKEND: claude, codex, or prompt-only "
-                                 "(writes the prompt for you to carry anywhere; the "
-                                 "default unless ai_merge_backend is set)")
+                                 "installs nothing. BACKEND: claude, codex, lmstudio (a "
+                                 "local OpenAI-compatible server -- nothing leaves your "
+                                 "network), or prompt-only (writes the prompt for you to "
+                                 "carry anywhere; the default unless ai_merge_backend is set)")
             sp.add_argument("--ai-response", default=None, metavar="FILE",
                             help="with --ai: apply an answer you carried back (one JSON "
                                  "block, as the prompt asks) instead of calling a backend")
@@ -1608,7 +1618,9 @@ def _ai_options(args, roots):
         cache_dir=user / "cache" / "ccs-ai", backend=backend,
         refresh=bool(getattr(args, "ai_refresh", False)),
         verbose=bool(getattr(args, "ai_verbose", False)),
-        response=pathlib.Path(args.ai_response) if getattr(args, "ai_response", None) else None)
+        response=pathlib.Path(args.ai_response) if getattr(args, "ai_response", None) else None,
+        endpoint=cfg.get("ai_merge_endpoint") or None,
+        model=cfg.get("ai_merge_model") or None)
 
 
 def _n_lines(n: int) -> str:

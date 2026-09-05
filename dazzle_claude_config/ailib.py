@@ -33,6 +33,7 @@ import tempfile
 from pathlib import Path
 
 from ._vendor.ailib import analyzer as _analyzer
+from ._vendor.ailib.backends import lmstudio as _lmstudio
 from ._vendor.ailib.backends import prompt_only as _prompt_only
 
 _BACKENDS_PKG = __name__.rsplit(".", 1)[0] + "._vendor.ailib.backends"
@@ -43,10 +44,17 @@ _BACKENDS_PKG = __name__.rsplit(".", 1)[0] + "._vendor.ailib.backends"
 _analyzer._BACKENDS = {
     "claude": _BACKENDS_PKG + ".claude",
     "codex": _BACKENDS_PKG + ".codex",
+    # Authored here, in the vendored tree, and written to be contributed
+    # upstream: an HTTP endpoint is a shape the shared library wants, not a
+    # ccs peculiarity. `_VENDORED.md` records which files are upstream's and
+    # which are ours; the purity test holds for both, which is what keeps
+    # this one liftable.
+    "lmstudio": _BACKENDS_PKG + ".lmstudio",
     "prompt-only": _BACKENDS_PKG + ".prompt_only",
 }
 
 PROMPT_ONLY = "prompt-only"
+LMSTUDIO = "lmstudio"
 
 
 def backend_names() -> tuple[str, ...]:
@@ -104,6 +112,29 @@ CACHE_TTL_SECONDS = _analyzer._CACHE_TTL_SECONDS
 def set_prompt_dir(path: str | os.PathLike) -> None:
     """Where ``prompt-only`` writes its ``prompt_<timestamp>.md``."""
     _prompt_only.set_output_dir(Path(path))
+
+
+def set_local(endpoint: str | None = None, model: str | None = None) -> None:
+    """Point the ``lmstudio`` backend at a server, and optionally pin a model.
+
+    The mirror of `set_prompt_dir`: a backend that needs a per-box fact is
+    told it here rather than reading configuration itself, so `ailib` stays
+    the one place ccs touches a backend. The answer's schema goes with it --
+    the backend enforces a shape it is given and never one it knows.
+    """
+    from .aiprompt import ANSWER_SCHEMA
+    _lmstudio.configure(endpoint=endpoint, model=model, schema=ANSWER_SCHEMA)
+
+
+def local_describe() -> str:
+    """`ccs doctor`'s line for the local endpoint: where, and what is loaded."""
+    return _lmstudio.describe()
+
+
+def local_context_is_roomy() -> bool:
+    """True when the loaded model's context window is far larger than a merge
+    needs -- reachable, but slow enough that a person will think it hung."""
+    return _lmstudio.context_is_roomy()
 
 
 _JSON_FENCE = re.compile(r"```json[ \t]*\r?\n(.*?)\r?\n[ \t]*```", re.DOTALL | re.IGNORECASE)

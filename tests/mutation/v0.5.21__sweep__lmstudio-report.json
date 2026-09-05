@@ -1,0 +1,118 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_backend_lmstudio.py",
+      "tests/test_vendored_ailib.py"
+    ],
+    "timestamp": "2026-09-04T19:27:41-04:00"
+  },
+  "results": [
+    {
+      "id": "m1",
+      "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+      "note": "boundary: equal to ROOMY_CONTEXT now counts as roomy",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m2",
+      "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+      "note": "None-vs-truthiness: an explicitly EMPTY loaded list skips the guard -> the disk-load hazard",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m3",
+      "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+      "note": "and/or swap in the cannot-say branch",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m4",
+      "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+      "note": "last loaded model instead of the first",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m6",
+      "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+      "note": "swapped tuple index: availability reads the reason, not the model",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m7",
+      "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+      "note": "loaded_models returns everything NOT loaded",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m8",
+      "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+      "note": "context_length reads an unloaded record",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m9",
+      "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+      "note": "prefers the static max over the window actually loaded",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m10",
+      "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+      "note": "swapped ternary: the native probe asks the wrong root",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m11",
+      "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+      "note": "dropped negation on the no-choices guard",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m12",
+      "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+      "note": "dropped normalization: whitespace-only content passes as an answer",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "survived": 5,
+    "killed": 6
+  },
+  "anomalies": []
+}

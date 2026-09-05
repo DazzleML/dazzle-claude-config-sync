@@ -214,6 +214,15 @@ git hash-object (first 12). Only separated-generation runs (modes 1-2) write her
   either way; the clause states the intent and saves a raise. Re-triage if
   `_differs_bytes` ever stops treating an unreadable file as differing.
 
+## dazzle_claude_config/_vendor/ailib/backends/lmstudio.py @ eb732125611a
+
+- m3 (v0.5.21 sweep, the lmstudio backend, mode 1, 2026-09-04):
+  `live is None and _model not in listed` -> `or`. **equivalent in
+  practice** -- the two differ only when a model is reported LOADED by the
+  native API but absent from `/v1/models`. LM Studio lists every loaded
+  model, so that state is unreachable there. Re-triage if a server turns up
+  that enumerates loaded models it does not list.
+
 ## dazzle_claude_config/livegit.py @ c1e9c2453f02
 
 - M19 (v0.5.21 sweep): the `rc != 0` half of the `rev-parse` guard dropped.

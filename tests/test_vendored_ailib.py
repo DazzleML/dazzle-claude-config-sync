@@ -40,6 +40,16 @@ EXPECTED_FILES = {
     "backends/prompt_only.py",
 }
 
+#: Authored HERE, inside the vendored tree, and written to be contributed
+#: upstream: the shared library wants an HTTP-server backend, and holding it
+#: outside would have meant ccs owning a file every other consumer needs. It
+#: is bound by the purity rule exactly like the copies -- no ccs import, no
+#: ccs token, stdlib only -- which is what keeps it liftable. It is NOT
+#: hashed against the record: nothing upstream to drift from yet.
+AUTHORED_FILES = {
+    "backends/lmstudio.py",
+}
+
 
 def _vendored_py() -> list[Path]:
     return sorted(p for p in AILIB.rglob("*.py") if "__pycache__" not in p.parts)
@@ -51,11 +61,14 @@ def _norm_sha(p: Path) -> str:
 
 # -- the tree ----------------------------------------------------------------
 
-def test_vendor_tree_is_exactly_the_six_files():
+def test_vendor_tree_is_the_copies_plus_what_we_authored_for_upstream():
     assert (VENDOR / "__init__.py").is_file(), "_vendor must be a package"
     assert (AILIB / "__init__.py").is_file()
     names = {p.relative_to(AILIB).as_posix() for p in _vendored_py()}
-    assert names == EXPECTED_FILES
+    assert names == EXPECTED_FILES | AUTHORED_FILES, (
+        "a file appeared under _vendor/ailib that the record does not classify -- "
+        "add it to EXPECTED_FILES (copied from upstream, hashed) or to "
+        "AUTHORED_FILES (written here for upstream, purity-checked only)")
     assert RECORD.is_file(), "_VENDORED.md must sit beside the copy"
 
 
@@ -106,7 +119,10 @@ def _recorded_hashes() -> dict[str, str]:
 def test_drift_record_names_every_file_and_the_bytes_match():
     recorded = _recorded_hashes()
     assert set(recorded) == EXPECTED_FILES, (
-        f"_VENDORED.md must list exactly the six files; got {sorted(recorded)}")
+        f"_VENDORED.md's 'Original files' table must list exactly the files COPIED "
+        f"from upstream; got {sorted(recorded)}. A file authored here belongs in the "
+        f"'Authored here' section, which carries no hash because there is nothing "
+        f"upstream for it to drift from.")
     drift = [rel for rel, sha in recorded.items() if _norm_sha(AILIB / rel) != sha]
     assert not drift, (
         f"vendored bytes differ from _VENDORED.md for {drift} -- a local edit "
@@ -118,7 +134,9 @@ def test_drift_record_names_every_file_and_the_bytes_match():
 def test_facade_registry_resolves_into_vendor():
     from dazzle_claude_config import ailib
     names = ailib.backend_names()
-    assert set(names) == {"claude", "codex", ailib.PROMPT_ONLY}
+    # lmstudio is in the registry like the rest: the tree it resolves into is
+    # what the vendoring contract is about, not who typed the file.
+    assert set(names) == {"claude", "codex", ailib.LMSTUDIO, ailib.PROMPT_ONLY}
     for name in names:
         mod = ailib.get_backend(name)
         assert mod.__name__.startswith("dazzle_claude_config._vendor.ailib.backends."), mod.__name__
