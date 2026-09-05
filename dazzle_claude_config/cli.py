@@ -783,9 +783,8 @@ def _doctor(args) -> int:
             # Not "is a file there" but "is a server there, with a model" --
             # and the sentence has to say which, or a person restarts the
             # wrong thing.
-            _ailib.set_local(cfg.get("ai_merge_endpoint") or None,
-                             cfg.get("ai_merge_model") or None)
-            _line = _ailib.local_describe()
+            _ailib.set_endpoint(cfg.get("ai_merge_endpoint") or None)
+            _line = _ailib.local_describe(cfg.get("ai_merge_model") or "")
             _well = _ailib.check_available(_backend) and not _ailib.local_context_is_roomy()
             (ok if _well else warn)(f"ai merge backend lmstudio: {_line}")
         elif _ailib.check_available(_backend):
@@ -796,6 +795,10 @@ def _doctor(args) -> int:
     except Exception as e:                       # the vendored copy missing or broken
         warn(f"ai merge library: {e} -- the vendored copy under _vendor/ailib is missing "
              f"or broken; even prompt-only cannot run")
+    _m = cfg.get("ai_merge_model")
+    if _m and _backend in _names and not _ailib.model_is_honoured(_backend):
+        warn(f"ai_merge_model is {_m!r} but the {_backend} backend cannot be told which "
+             f"model to use -- it would be ignored; claude and lmstudio honour it")
     if cfg.get("ai_merge_command"):
         warn("ai_merge_command is set but no longer read -- the AI merge is configured "
              "with ai_merge_backend (see docs/ai-merge.md); the key was documented since "
@@ -1677,7 +1680,15 @@ def _print_ai_report(r, args) -> None:
                 print(c("dim", f"    the assembled file is at {out.proposal} for your eyes; "
                                f"nothing was copied, nothing installed"))
         elif out.status == "backend-failed":
-            print(f"{c('red', 'ai failed')} {label} {c('dim', '-- ' + out.error)}")
+            # The first line of a backend's complaint is the part a person
+            # can act on; the rest is its own diagnostics and can run to
+            # hundreds of kilobytes (measured twice on one codex fault).
+            _first = (out.error or "").strip().splitlines()
+            _head, _cut = render.fit(_first[0] if _first else "(no message)",
+                                     indent=len(f"ai failed {label} -- "))
+            print(f"{c('red', 'ai failed')} {label} {c('dim', '-- ' + _head)}")
+            if (len(_first) > 1 or _cut) and getattr(out, "error_path", None):
+                print(c("dim", f"    the backend's full output: {out.error_path}"))
     for item in r.ai_unchanged:
         if item in r.ai_copied:
             continue                          # said above, on the proposal's own line

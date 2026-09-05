@@ -240,7 +240,7 @@ def test_the_backend_is_registered_and_reachable_through_the_facade(server):
     from dazzle_claude_config import ailib
     assert "lmstudio" in ailib.backend_names()
     assert ailib.get_backend("lmstudio") is ailocal
-    ailib.set_local(endpoint=ailocal.endpoint(), model="")
+    ailib.set_endpoint(ailocal.endpoint())
     ok, text = ailib.invoke("lmstudio", "resolve this", timeout=10)
     assert ok is True and json.loads(text) == ANSWER
 

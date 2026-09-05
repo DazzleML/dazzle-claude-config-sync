@@ -144,7 +144,8 @@ class _Fake:
     ok = True
 
     @classmethod
-    def invoke(cls, name, prompt, *, verbose=False, timeout=120, cwd=None):
+    def invoke(cls, name, prompt, *, verbose=False, timeout=120, cwd=None, model=None):
+        cls.model = model            # what the step asked for, for the model tests
         cls.calls.append(name)
         return cls.ok, cls.reply
 
@@ -281,3 +282,40 @@ def test_prompt_only_never_touches_the_cache_or_a_backend(tmp_path, fake):
     out = _run(w, _opts(tmp_path))
     assert out.status == "prompt-written" and fake.calls == []
     assert not (tmp_path / "cache").exists()
+
+
+# -- the model reaches the backend, whichever backend it is ------------------
+
+def test_the_configured_model_is_passed_to_the_backend(tmp_path, fake):
+    """`ai_merge_model` was accepted by the config, documented, and reached
+    ONLY the local server -- set it with a hosted backend and nothing
+    happened. A setting that silently does nothing is the defect this whole
+    release keeps finding; here it was ours."""
+    w = _world(tmp_path)
+    _run(w, _opts(tmp_path, backend="claude", model="some-model-alias"))
+    assert fake.model == "some-model-alias"
+
+
+def test_two_models_are_two_cache_entries(tmp_path, fake):
+    """A different model is a different answerer, so it belongs in the key
+    for every backend that can honour it -- otherwise changing the model
+    returns the previous one's answer and the person concludes the setting
+    was ignored (which, before this, it was)."""
+    w = _world(tmp_path)
+    _run(w, _opts(tmp_path, backend="claude", model="model-a"))
+    assert fake.calls == ["claude"]
+    _run(w, _opts(tmp_path, backend="claude", model="model-a"))
+    assert fake.calls == ["claude"], "the same model should come from the cache"
+    _run(w, _opts(tmp_path, backend="claude", model="model-b"))
+    assert fake.calls == ["claude", "claude"], "a different model must not reuse it"
+
+
+def test_a_backend_that_cannot_honour_a_model_says_so_rather_than_pretending():
+    """codex takes `-m` on its argv, and its argv belongs to the vendored
+    copy we do not edit. So it is absent from the table ON PURPOSE, and the
+    absence is legible rather than silent."""
+    from dazzle_claude_config import ailib
+    assert ailib.model_is_honoured("claude") is True
+    assert ailib.model_is_honoured(ailib.LMSTUDIO) is True
+    assert ailib.model_is_honoured("codex") is False
+    assert ailib.model_is_honoured(ailib.PROMPT_ONLY) is False

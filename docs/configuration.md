@@ -77,7 +77,7 @@ Where the lmstudio backend sends its request: an OpenAI-compatible endpoint, end
 
 **Default:** `null` &middot; **Environment:** `CCS_AI_MERGE_MODEL`
 
-Which model the lmstudio backend asks for. Unset means whatever the server reports first, which is right when you run one model at a time. When set, ccs checks the id against the server BEFORE sending the merge: asking for a model that is not loaded makes LM Studio load it, and a typo can mean gigabytes off disk before anything happens.
+Which model the AI merge asks for. Honoured by lmstudio (checked against the server before anything is sent, because naming a model it has not loaded makes it load one from disk) and by claude (through ANTHROPIC_MODEL). Not yet honoured by codex, which takes its model on the command line and has no way to be told one from here -- `ccs doctor` says so rather than letting the setting quietly do nothing. Unset means whatever the backend would choose on its own; for lmstudio that is whatever is loaded, which is right when you run one model at a time.
 
 ### interactive
 

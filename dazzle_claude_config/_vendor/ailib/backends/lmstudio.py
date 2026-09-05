@@ -200,28 +200,33 @@ def context_is_roomy():
     return bool(n and n > ROOMY_CONTEXT)
 
 
-def _target():
+def _target(model=None):
     """(model to ask for, why not) -- "" in the second slot means go ahead.
 
     The order that avoids surprising a person: the pinned model if it is
     loaded; else the loaded one when the server can say which; else the
     first listed, which is all a server without load state can offer.
+
+    `model` overrides the configured pin FOR THIS CALL ONLY, so a health
+    check can ask "would this model work?" without configuring anything --
+    a question that writes is a question you cannot ask twice.
     """
+    want = _model if model is None else model
     listed = models()
     if not listed:
         return "", (f"no model server at {_endpoint} -- start the local server "
                     f"(in LM Studio: the Developer tab) or point at another endpoint")
-    live = loaded_models()          # None = the server cannot say
-    if _model:
-        if live is not None and _model not in live:
+    live = loaded_models()        # None = the server cannot say
+    if want:
+        if live is not None and want not in live:
             where = ", ".join(live) if live else "none"
-            return "", (f"model {_model!r} is not loaded on {_endpoint} (loaded: {where}) -- "
+            return "", (f"model {want!r} is not loaded on {_endpoint} (loaded: {where}) -- "
                         f"asking for it would load it from disk; load it first or name one "
                         f"that is")
-        if live is None and _model not in listed:
-            return "", (f"model {_model!r} is not on {_endpoint} -- it has: "
+        if live is None and want not in listed:
+            return "", (f"model {want!r} is not on {_endpoint} -- it has: "
                         f"{', '.join(listed)}")
-        return _model, ""
+        return want, ""
     if live:
         return live[0], ""          # the one in memory, not the first of everything on disk
     if live is not None:            # the server can say, and says nothing is loaded
@@ -239,9 +244,12 @@ def is_available():
     return bool(_target()[0])
 
 
-def describe():
-    """One line for a caller's health check: where it looked, what it found."""
-    model, why = _target()
+def describe(model=None):
+    """One line for a caller's health check: where it looked, what it found.
+
+    `model` asks about a specific one without configuring it.
+    """
+    model, why = _target(model)
     if not model:
         if not models():
             return f"{_endpoint} -- not reachable (is the local server started?)"

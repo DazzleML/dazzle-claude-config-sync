@@ -73,6 +73,7 @@ class AiOutcome:
     response_path: Path | None = None
     cached: bool = False
     error: str = ""
+    error_path: Path | None = None   # the backend's full output, when it was long
 
 
 def _safe(label: str) -> str:
@@ -121,13 +122,14 @@ def ai_step(*, label: str, ours: Path, base: Path, theirs: Path, merged: Path,
 
     fingerprint = {"base": norm_sha(b), "ours": norm_sha(o), "theirs": norm_sha(t),
                    "rules": rules.sha, "base_kind": base_kind, **(facts or {})}
+    # Two models are two answerers, whichever backend reaches them, so the
+    # model belongs in the key for ALL of them -- not just the local server.
+    # Without it, changing ai_merge_model returns the previous model's answer
+    # from cache and the person concludes the setting did nothing.
+    if opts.model and ailib.model_is_honoured(opts.backend):
+        fingerprint["model"] = opts.model
     if opts.backend == ailib.LMSTUDIO:
-        # The backend name alone identifies a CLI, but not a local server:
-        # one endpoint serves many models, and two models are two answerers.
-        # Without this, swapping the model returns the previous one's answer
-        # from cache and the person concludes the model ignored them.
         fingerprint["endpoint"] = opts.endpoint or ""
-        fingerprint["model"] = opts.model or ""
     key = ailib.cache_key(fingerprint, opts.backend, TOOL_NAME)
 
     # -- the answer ------------------------------------------------------------
@@ -150,7 +152,9 @@ def ai_step(*, label: str, ours: Path, base: Path, theirs: Path, merged: Path,
         if opts.backend == ailib.LMSTUDIO:
             # A server-shaped backend is told where to look before it is
             # asked whether it is there; the CLI ones discover themselves.
-            ailib.set_local(opts.endpoint, opts.model)
+            # The MODEL is not set here -- `invoke(model=...)` below is the
+            # single path for that, whichever backend it reaches.
+            ailib.set_endpoint(opts.endpoint)
         if not ailib.check_available(opts.backend):
             out.status = "backend-failed"
             out.error = (f"backend {opts.backend!r} is not available "
@@ -164,10 +168,23 @@ def ai_step(*, label: str, ours: Path, base: Path, theirs: Path, merged: Path,
                 out.cached = True
         if answer is None:
             ok, text = ailib.invoke(opts.backend, prompt, verbose=opts.verbose,
-                                    timeout=opts.timeout)
+                                    timeout=opts.timeout, model=opts.model)
             if not ok:
                 out.status = "backend-failed"
+                # A CLI's failure message is whatever IT chose to print, and
+                # that can be enormous: a codex version mismatch put 268 KB of
+                # its own model catalogue on the terminal here, twice, burying
+                # the one line that said what went wrong. Keep it all -- it is
+                # the only evidence there is -- but keep it in a file, and let
+                # the report show the head of it.
                 out.error = text
+                try:
+                    workdir.mkdir(parents=True, exist_ok=True)
+                    ep = workdir / "backend-error.txt"
+                    ep.write_text(text, encoding="utf-8")
+                    out.error_path = ep
+                except OSError:
+                    pass
                 return out
             answer = text
             ailib.cache_write(key, opts.backend,

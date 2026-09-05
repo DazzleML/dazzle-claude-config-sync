@@ -72,8 +72,34 @@ def check_available(name: str) -> bool:
     return _analyzer.check_available(name)
 
 
+#: Which env var names the model, per backend. The vendored CLI backends
+#: build their own argv and take no model parameter, so a model chosen out
+#: here reaches them only through the environment. The Claude Code CLI reads
+#: ANTHROPIC_MODEL (verified: an invalid value comes back as
+#: `[claude-code:unrecognized_model]`), so claude is covered from here.
+#: codex has `-m/--model` but no env equivalent we have verified, so it is
+#: absent from this table ON PURPOSE and `model_is_honoured` says so -- a
+#: setting that quietly does nothing is the defect this table exists to
+#: stop, not one to spread. Giving codex its flag means passing
+#: configuration INTO the call rather than around it, which is queued in
+#: _vendor/ailib/_VENDORED.md.
+_MODEL_ENV = {"claude": "ANTHROPIC_MODEL"}
+
+
+def model_is_honoured(name: str) -> bool:
+    """True when `name` can actually be told which model to use.
+
+    `lmstudio` takes it directly; `claude` through the environment; `codex`
+    not yet, because its model is an argv flag and the backend contract has
+    nowhere to pass one; `prompt-only` has no model at all, which is not a
+    gap in the same sense -- there is nothing there to honour.
+    """
+    return name == LMSTUDIO or name in _MODEL_ENV
+
+
 def invoke(name: str, prompt: str, *, verbose: bool = False, timeout: int = 120,
-           cwd: str | os.PathLike | None = None) -> tuple[bool, str]:
+           cwd: str | os.PathLike | None = None,
+           model: str | None = None) -> tuple[bool, str]:
     """Run `prompt` through backend `name`; ``(success, text)`` as the
     vendored contract has it (``prompt-only`` answers ``(False, where it
     wrote the prompt)``).
@@ -85,9 +111,19 @@ def invoke(name: str, prompt: str, *, verbose: bool = False, timeout: int = 120,
     somewhere specific instead.
     """
     backend = get_backend(name)
+    if model and name == LMSTUDIO:
+        # A server-shaped backend takes its model as state, a CLI takes it
+        # as environment; the caller says `model=` once and this decides how
+        # it lands. Two callers each choosing a mechanism is how the model
+        # came to be passed twice by two routes.
+        _lmstudio.configure(model=model)
     before = os.getcwd()
+    env_var = _MODEL_ENV.get(name) if model else None
+    env_before = os.environ.get(env_var) if env_var else None
     scratch: str | None = None
     try:
+        if env_var:
+            os.environ[env_var] = model
         if cwd is None:
             scratch = tempfile.mkdtemp(prefix="ccs-ai-")
             os.chdir(scratch)
@@ -96,6 +132,11 @@ def invoke(name: str, prompt: str, *, verbose: bool = False, timeout: int = 120,
         return backend.invoke(prompt, verbose=verbose, timeout=timeout)
     finally:
         os.chdir(before)
+        if env_var:                       # restore, even on a raise
+            if env_before is None:
+                os.environ.pop(env_var, None)
+            else:
+                os.environ[env_var] = env_before
         if scratch is not None:
             shutil.rmtree(scratch, ignore_errors=True)
 
@@ -114,21 +155,29 @@ def set_prompt_dir(path: str | os.PathLike) -> None:
     _prompt_only.set_output_dir(Path(path))
 
 
-def set_local(endpoint: str | None = None, model: str | None = None) -> None:
-    """Point the ``lmstudio`` backend at a server, and optionally pin a model.
+def set_endpoint(url: str | None = None) -> None:
+    """Where the local model server is, and the shape its answers must take.
 
-    The mirror of `set_prompt_dir`: a backend that needs a per-box fact is
-    told it here rather than reading configuration itself, so `ailib` stays
-    the one place ccs touches a backend. The answer's schema goes with it --
-    the backend enforces a shape it is given and never one it knows.
+    Named for what it sets, like `set_prompt_dir` beside it -- an earlier
+    spelling (`set_local`) named the BACKEND instead, and took the model
+    too, which left `aistep` handing the model to two different mechanisms
+    and the reader working out which one applied. `invoke(model=...)` is now
+    the only way to say which model, for every backend; this says only where
+    the server is. The schema rides along because it is ccs's, not the
+    library's: the backend enforces a shape it is given, never one it knows.
     """
     from .aiprompt import ANSWER_SCHEMA
-    _lmstudio.configure(endpoint=endpoint, model=model, schema=ANSWER_SCHEMA)
+    _lmstudio.configure(endpoint=url, schema=ANSWER_SCHEMA)
 
 
-def local_describe() -> str:
-    """`ccs doctor`'s line for the local endpoint: where, and what is loaded."""
-    return _lmstudio.describe()
+def local_describe(model: str | None = None) -> str:
+    """`ccs doctor`'s line for the local endpoint: where, and what is loaded.
+
+    Takes the model to CHECK and does not configure anything to answer --
+    a health check that mutates the thing it reports on is one you cannot
+    run twice and trust.
+    """
+    return _lmstudio.describe(model or None)
 
 
 def local_context_is_roomy() -> bool:
