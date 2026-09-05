@@ -2001,6 +2001,44 @@ def _print_no_such_file(manifest, box, wanted: str, want: str) -> None:
               file=sys.stderr)
 
 
+def _other_side_path(label: str, manifest, roots) -> pathlib.Path | None:
+    """Where a repo-side label WOULD live, if its territory is known.
+
+    Only called when the label matched no manifest entry, to answer the one
+    question the tool is in a position to answer and does not: is this thing
+    over on the other side? `apply` and `collect` are the same operation in
+    opposite directions, and naming the wrong one is the easiest mistake
+    here -- "there is nothing to do" and "you asked the wrong verb" deserve
+    different sentences.
+    """
+    if manifest is None or not label:
+        return None
+    parts = label.replace("\\", "/").strip("/").split("/", 1)
+    if len(parts) != 2:
+        return None
+    repo_dir, rest = parts
+    for t in (manifest.territories or {}).values():
+        if t.get("repo_dir") == repo_dir:
+            root = roots.get(t.get("root_var"))
+            if root is not None:
+                p = pathlib.Path(root) / rest
+                return p if p.exists() else None
+    return None
+
+
+def _nothing_matched_line(args, manifest, roots, other_verb: str) -> str:
+    """The summary for a filter that matched nothing -- which is NOT the same
+    outcome as "the two sides agree", and must not borrow its reassurance."""
+    what = args.only if getattr(args, "only", None) else getattr(args, "path", None)
+    msg = (f" -- --only {what!r} matched no manifest entry, so nothing was compared"
+           if getattr(args, "only", None) else
+           f" -- {what!r} matched no manifest entry, so nothing was compared")
+    where = _other_side_path(what, manifest, roots)
+    if where is not None:
+        msg += f"; that path DOES exist at {where} -- did you mean `ccs {other_verb}`?"
+    return msg
+
+
 def _warn_only_miss(args, manifest, box) -> None:
     hidden = _gated_matches(manifest, box, lambda r: only_scope(args.only, r)[0])
     if hidden:
@@ -2622,8 +2660,12 @@ def main(argv: list[str] | None = None) -> int:
                                "ccs-manifest.json's collect_exclude"))
             if not r.copied and not r.refusals:
                 held = bool(r.refused_uncommitted or r.skipped)
+                missed = bool(getattr(r, "only_matched", None) == 0
+                              and getattr(args, "only", None))
                 print(c("green", "collect: nothing to do") +
-                      (" -- nothing was collected; see the lines above for what "
+                      (_nothing_matched_line(args, manifest, roots, "apply")
+                       if missed else
+                       " -- nothing was collected; see the lines above for what "
                        "was held back"
                        if held else
                        " -- the checkout already has everything from your live config"))
@@ -2829,8 +2871,18 @@ def main(argv: list[str] | None = None) -> int:
                 # directly beneath the FAILED line naming the file.
                 held = bool(wrong_dir or r.removals_pending or r.removals_kept
                             or r.mismatched or r.failed or r.held_deleted)
+                # THREE outcomes, not two. A filter that matched nothing
+                # compared nothing, so "already matches" is not a summary of
+                # anything -- and it is the most reassuring sentence
+                # available, printed directly under a warning saying the
+                # opposite. Seen on a real run whose CCS_CHECKOUT_DIR still
+                # pointed at a scratch world (#56).
+                missed = bool(getattr(r, "only_matched", None) == 0
+                              and getattr(args, "only", None))
                 print(c("green", "apply: nothing to do") +
-                      (" -- nothing was applied; see the skipped and pending "
+                      (_nothing_matched_line(args, manifest, roots, "collect")
+                       if missed else
+                       " -- nothing was applied; see the skipped and pending "
                        "lines above for what differs"
                        if held else
                        " -- your live config already matches the checkout"))

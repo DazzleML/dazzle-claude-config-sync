@@ -210,3 +210,56 @@ def test_merge_dry_run_is_scoped_to_the_named_file(world, capsys):
     assert rc in (0, 1), (out, err)
     assert "SKILL.md" in out
     assert "SAME.md" not in out
+
+
+# -- #56: three outcomes, not two -------------------------------------------
+
+def test_a_filter_that_matched_nothing_does_not_claim_the_sides_agree(world, capsys):
+    """`--only X` matching no entry compared NOTHING, so the reassuring
+    sentence is not merely unhelpful, it is false -- and it printed directly
+    under a warning saying the opposite. Reported from a real run whose
+    CCS_CHECKOUT_DIR still pointed at a scratch world."""
+    co, live, user = world
+    rc = main(_argv(co, live, user, "apply", "--dry-run", "--only", "dotclaude/nope"))
+    out = capsys.readouterr().out
+    assert "matched no manifest entries" in out            # the warning, as before
+    assert "matched no manifest entry, so nothing was compared" in out
+    assert "already matches the checkout" not in out, out
+    assert rc == 0
+
+
+def test_a_filter_that_matched_nothing_names_the_other_verb_when_the_path_is_there(world, capsys):
+    """apply and collect are the same operation in opposite directions, and
+    naming the wrong one is the easiest mistake here. When the unmatched
+    label DOES exist on the live side, say so and name `collect`."""
+    co, live, user = world
+    (live / "notes").mkdir()
+    (live / "notes" / "own.md").write_text("mine\n", encoding="utf-8")
+    rc = main(_argv(co, live, user, "apply", "--dry-run", "--only", "dotclaude/notes"))
+    out = capsys.readouterr().out
+    assert "nothing was compared" in out
+    assert "DOES exist" in out and "ccs collect" in out, out
+    assert rc == 0
+
+
+def test_the_in_sync_sentence_survives_where_it_is_true(world, capsys):
+    """The guard on the change: a scope that matched and found the two sides
+    identical must still get the reassuring line, or the fix has traded one
+    wrong summary for another."""
+    co, live, user = world
+    (live / "t" / "SAME.md").write_text("t/SAME.md checkout\n", encoding="utf-8")
+    rc = main(_argv(co, live, user, "apply", "--dry-run", "--only", "dotclaude/t"))
+    out = capsys.readouterr().out
+    assert "already matches the checkout" in out, out
+    assert "nothing was compared" not in out
+    assert rc == 0
+
+
+def test_collect_gets_the_mirror(world, capsys):
+    """The same three outcomes, pointing the other way."""
+    co, live, user = world
+    rc = main(_argv(co, live, user, "collect", "--dry-run", "--only", "dotclaude/nope"))
+    out = capsys.readouterr().out
+    assert "matched no manifest entry, so nothing was compared" in out
+    assert "already has everything from your live config" not in out, out
+    assert rc == 0
