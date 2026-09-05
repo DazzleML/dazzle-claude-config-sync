@@ -1,19 +1,23 @@
 """a1 -- the vendored AI library and the facade that is ccs's only door to it.
 
-The six files under ``dazzle_claude_config/_vendor/ailib/`` are wtf-windows'
-``src/wtf_windows/lib/ai/`` copied byte-verbatim; ``_VENDORED.md`` beside
-them records where they came from and the hash of each. ccs never imports
-them directly: ``dazzle_claude_config/ailib.py`` rebinds the backend registry
-(the one wtf-windows-specific thing in the copy) and adds what ccs needs on
-top (a neutral working directory for the CLI backends, a JSON response
-reader). Three invariants are pinned here:
+The six files under ``dazzle_claude_config/_vendor/ailib/`` were copied from
+wtf-windows' ``src/wtf_windows/lib/ai/`` on 2026-09-03, and are **customised
+here since** -- our own instance of the vendor, the way a git subtree is, on
+its way to becoming the shared library. So the guarantee is deliberately not
+byte-identity with the origin (that lock was removed 2026-09-05; the policy
+and the reasoning are at the top of ``_VENDORED.md``). Three invariants are
+pinned here instead:
 
-  purity -- nothing under ``_vendor/`` knows ccs exists (so the copy can be
-            lifted into the standalone library unchanged);
-  drift  -- the bytes on disk are the bytes the record names (a local edit
-            that forgets to update the record fails the suite);
-  facade -- every backend resolves to a module under ``_vendor``, and the
-            facade's own additions behave.
+  purity  -- nothing under ``_vendor/`` knows ccs exists, so the tree stays
+             liftable into the standalone library. This is the one that
+             actually makes a copy adoptable, and it matters MORE now that
+             the tree is expected to travel;
+  honesty -- a copied file that differs from the fingerprint it arrived with
+             must say so in _VENDORED.md's "Changes since the copy", and a
+             file authored here must be named there too. A fork of record is
+             useful exactly as long as its record is true;
+  facade  -- every backend resolves to a module under ``_vendor``, and the
+             facade's own additions behave.
 """
 from __future__ import annotations
 
@@ -40,12 +44,13 @@ EXPECTED_FILES = {
     "backends/prompt_only.py",
 }
 
-#: Authored HERE, inside the vendored tree, and written to be contributed
-#: upstream: the shared library wants an HTTP-server backend, and holding it
-#: outside would have meant ccs owning a file every other consumer needs. It
-#: is bound by the purity rule exactly like the copies -- no ccs import, no
-#: ccs token, stdlib only -- which is what keeps it liftable. It is NOT
-#: hashed against the record: nothing upstream to drift from yet.
+#: Authored HERE, inside the vendored tree: the shared library wants an
+#: HTTP-server backend, and holding it outside would have meant ccs owning a
+#: file every other consumer needs. It is bound by the purity rule exactly
+#: like the copies -- no ccs import, no ccs token, stdlib only -- which is
+#: what keeps it liftable. It has no origin fingerprint because it has no
+#: origin; the changes list is the only thing that records it exists, which
+#: is why a test below insists it is named there.
 AUTHORED_FILES = {
     "backends/lmstudio.py",
 }
@@ -104,10 +109,10 @@ def test_purity_nothing_under_vendor_knows_ccs():
     assert not bad, "\n".join(bad)
 
 
-# -- drift -------------------------------------------------------------------
+# -- honesty -----------------------------------------------------------------
 
 def _recorded_hashes() -> dict[str, str]:
-    """Rows of the 'Original files' table: | path | lines | sha256 |."""
+    """Rows of the origin-fingerprint table: | path | lines | sha256 |."""
     rows: dict[str, str] = {}
     for line in RECORD.read_text(encoding="utf-8").splitlines():
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
@@ -116,17 +121,52 @@ def _recorded_hashes() -> dict[str, str]:
     return rows
 
 
-def test_drift_record_names_every_file_and_the_bytes_match():
+def test_every_copied_file_has_the_fingerprint_it_arrived_with():
+    """The table records what we RECEIVED, so an edited file can be told from
+    an untouched one and the delta has something to be measured against. It
+    is no longer a lock -- see the policy note at the top of _VENDORED.md."""
     recorded = _recorded_hashes()
     assert set(recorded) == EXPECTED_FILES, (
-        f"_VENDORED.md's 'Original files' table must list exactly the files COPIED "
-        f"from upstream; got {sorted(recorded)}. A file authored here belongs in the "
-        f"'Authored here' section, which carries no hash because there is nothing "
-        f"upstream for it to drift from.")
-    drift = [rel for rel, sha in recorded.items() if _norm_sha(AILIB / rel) != sha]
-    assert not drift, (
-        f"vendored bytes differ from _VENDORED.md for {drift} -- a local edit "
-        f"without a record entry, or the record was not refreshed")
+        f"_VENDORED.md must record an origin fingerprint for exactly the files "
+        f"COPIED from upstream; got {sorted(recorded)}. A file authored here has no "
+        f"origin to fingerprint and belongs in 'Changes since the copy'.")
+
+
+def _changes_section() -> str:
+    text = RECORD.read_text(encoding="utf-8")
+    start = text.index("## Changes since the copy")
+    end = text.index("\n## ", start + 1)
+    return text[start:end]
+
+
+def test_a_file_that_differs_from_its_origin_is_declared_in_the_changes_list():
+    """The honesty rule that replaced byte-identity.
+
+    Our copy is open to improvement -- that is the whole point of it -- so
+    the guarantee is no longer that nothing changed, but that everything
+    which changed is written down. A fork of record is useful exactly as
+    long as its record is true, and the way a fork rots is that somebody
+    edits a file, does not log it, and six months later nobody can say
+    which lines are ours. This makes that mechanical rather than cultural.
+    """
+    recorded = _recorded_hashes()
+    changes = _changes_section()
+    undeclared = [rel for rel, sha in recorded.items()
+                  if _norm_sha(AILIB / rel) != sha and rel not in changes]
+    assert not undeclared, (
+        f"these copied files differ from the fingerprint they arrived with and are "
+        f"not named in _VENDORED.md's 'Changes since the copy': {undeclared}. Edit "
+        f"them freely -- but say what you changed and why, or the record stops "
+        f"being able to tell ours from theirs.")
+
+
+def test_a_file_authored_here_is_declared_too():
+    """The same rule from the other side: `lmstudio.py` has no origin
+    fingerprint, so the only thing that records its existence is the
+    changes list."""
+    changes = _changes_section()
+    for rel in AUTHORED_FILES:
+        assert rel in changes, f"{rel} is authored here but not named in the changes list"
 
 
 # -- the facade --------------------------------------------------------------
