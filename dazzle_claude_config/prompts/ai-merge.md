@@ -33,8 +33,9 @@ Reply with exactly ONE fenced ```json block and nothing after it:
 ```
 
 - `lines`: ids from THIS hunk's panes only, in the order they should appear in the file. Each id at most once. Keep each pane's own order: an interleaving of O, B and T, never a reorder within a pane.
-- A line you leave out is fine when a line you selected is a rewrite of it. Otherwise a rule in `rules` must license the drop, or the proposal fails validation and nothing is installed.
+- A line you leave out is fine when a line you selected is a rewrite of it. Otherwise a rule in `rules` must license the drop, or the proposal fails validation and nothing is installed. When a rule drops the whole region, `lines` is empty (`[]`) and `rules` cites it: selecting a side is not a drop.
 - A B line whose text appears in neither O nor T brings back content nobody has now; it needs a rule too.
 - Context lines are marked and are not selectable.
-- A hunk marked **paragraph** is one line against one line: you can only take one side whole. Say which and why, and put the words the other side alone has (listed for you) in the rationale so the person can fold them in by hand.
+- A hunk marked **paragraph** is one line against one line: you can only take one side whole -- or, under a rule that drops the line, neither. Say which and why, and put the words the other side alone has (listed for you) in the rationale so the person can fold them in by hand.
+- A hunk marked **additions** is lines both sides added where the base had nothing, and they added different things: keeping both is usually right, and you may -- select the O lines and the T lines together, in the order that reads best. Drop one side only under a rule.
 - Never write new text. Never explain outside the JSON block.

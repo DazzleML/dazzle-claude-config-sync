@@ -41,7 +41,8 @@ def test_write_then_load_round_trips_every_field(tmp_path):
     airecord.write(p, r)
     got = airecord.load(p)
     assert got == r
-    assert got.version == 1 and got.origin == "ai"
+    assert got.version == 2 and got.origin == "ai"
+    assert got.chosen == 0 and got.answer["backend"] == "prompt-only"
     assert got.created and got.copied_sha == "" and got.accepted_unchanged == ""
     # hand-editable: flat JSON, one object, indented
     data = json.loads(p.read_text(encoding="utf-8"))
@@ -55,9 +56,9 @@ def test_load_treats_absent_or_malformed_as_no_record(tmp_path):
     assert airecord.load(p) is None
     p.write_text("[1, 2]", encoding="utf-8")
     assert airecord.load(p) is None
-    p.write_text(json.dumps({"version": 1, "origin": "ai"}), encoding="utf-8")   # fields missing
+    p.write_text(json.dumps({"version": 2, "origin": "ai"}), encoding="utf-8")   # fields missing
     assert airecord.load(p) is None
-    p.write_text(json.dumps({"version": 2, "origin": "ai"}), encoding="utf-8")   # a future schema
+    p.write_text(json.dumps({"version": 3, "origin": "ai"}), encoding="utf-8")   # a future schema
     assert airecord.load(p) is None
 
 
@@ -103,7 +104,7 @@ def test_load_rejects_a_record_with_a_required_field_missing_or_mistyped(tmp_pat
         d = dict(full); del d[missing]
         p.write_text(json.dumps(d), encoding="utf-8")
         assert airecord.load(p) is None, missing
-    p.write_text(json.dumps(_full_json(version=2)), encoding="utf-8")
+    p.write_text(json.dumps(_full_json(version=3)), encoding="utf-8")
     assert airecord.load(p) is None
     p.write_text(json.dumps(_full_json(valid="yes")), encoding="utf-8")
     assert airecord.load(p) is None
@@ -149,6 +150,43 @@ def test_write_overwrites_an_existing_record_and_ends_with_a_newline(tmp_path):
     airecord.write(p, _rec(backend="codex"))          # the second write must succeed
     assert airecord.load(p).backend == "codex"
     assert p.read_bytes().endswith(b"\n")
+
+
+# -- schema 2: N answers, one chosen (U5 of the seam rebuild, 2026-09-05) --------
+
+def test_a_schema_1_record_loads_as_schema_2_with_one_answer(tmp_path):
+    """The v1 loader is the one compatibility layer kept on purpose: a
+    record is the person's data. One-way -- written back as v2."""
+    p = tmp_path / "x.merged-ai.record.json"
+    v1 = _full_json(version=1)
+    del v1["answers"]; del v1["chosen"]
+    p.write_text(json.dumps(v1), encoding="utf-8")
+    got = airecord.load(p)
+    assert got is not None and got.version == 2
+    assert len(got.answers) == 1 and got.chosen == 0
+    assert got.answer["backend"] == "prompt-only" and got.answer["fingerprint"] == "f" * 16
+    assert got.answer["proposal_sha"] == "p" * 64
+    airecord.write(p, got)
+    assert json.loads(p.read_text(encoding="utf-8"))["version"] == 2
+
+
+def test_new_record_puts_what_the_backend_reported_into_the_chosen_answer():
+    r = airecord.new_record(proposal=b"p", ours=b"o", theirs=b"t", base=b"b", base_kind="inferred",
+                            backend="openrouter", rules_path="", rules_sha="", fingerprint="k" * 16,
+                            valid=True, failures=[], identity="openai|https://openrouter.ai/api/v1|m||key:OPENROUTER_API_KEY",
+                            model_used="qwen/qwen3", honoured=("schema", "model"))
+    a = r.answer
+    assert a["backend"] == "openrouter" and a["model_used"] == "qwen/qwen3"
+    assert a["honoured"] == ["schema", "model"] and "openrouter.ai" in a["identity"]
+    assert "OPENROUTER_API_KEY" in a["identity"] and "sk-" not in a["identity"]   # the name, never a value
+    assert r.backend == "openrouter" and r.fingerprint == "k" * 16                 # denormalised, same facts
+
+
+def test_a_second_answers_proposal_has_its_own_name(tmp_path):
+    merged = tmp_path / "skills__s.md.merged"
+    assert airecord.proposal_path(merged) == tmp_path / "skills__s.md.merged-ai"
+    assert airecord.proposal_path(merged, 0) == tmp_path / "skills__s.md.merged-ai"
+    assert airecord.proposal_path(merged, 1) == tmp_path / "skills__s.md.merged-ai.1"
 
 
 def test_new_record_hashes_an_empty_base_rather_than_recording_none():

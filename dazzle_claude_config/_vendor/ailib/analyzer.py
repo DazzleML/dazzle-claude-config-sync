@@ -20,48 +20,49 @@ Tools handle what makes their events semantically unique.
 import hashlib
 import json
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from .backend import build as _build
+from .cache import run as _run
+from .parsers import sections as _sections
+from .types import Request as _Request, Spec as _Spec
 
-# Cache TTL
-_CACHE_TTL_SECONDS = 24 * 60 * 60  # 24 hours
 
-# Available backends (lazy-loaded)
-_BACKENDS = {
-    "claude": "wtf_windows.lib.ai.backends.claude",
-    "codex": "wtf_windows.lib.ai.backends.codex",
-    "prompt-only": "wtf_windows.lib.ai.backends.prompt_only",
+# The three names the ORIGINAL front door knew, as specs over the object
+# model. This is the shim's table, not a registry: a consumer that wants
+# its own names keeps them on its own side and builds specs itself. The argv
+# is what the original backends ran; the prompt-only directory is the
+# original default.
+#
+# COMPAT(remove-after: wtf locked migrates to build/run)
+_COMPAT_PRESETS = {
+    "claude": _Spec("cli", name="claude",
+                    command=("claude", "--output-format", "text", "-p", "-"),
+                    env_unset=("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"),
+                    candidates=("~/.local/bin/claude.exe", "~/.local/bin/claude"), on_prem=False),
+    "codex": _Spec("cli", name="codex",
+                   command=("codex", "exec", "--skip-git-repo-check", "-"),
+                   candidates=("%APPDATA%/npm/codex.cmd",
+                               "%LOCALAPPDATA%/Microsoft/WinGet/Links/codex.cmd"), on_prem=False),
+    "prompt-only": _Spec("prompt-file", name="prompt-only",
+                         endpoint=str(Path.home() / ".wtf-windows" / "ai")),
 }
 
-# Default response section labels
-DEFAULT_SECTIONS = [
-    ("what_happened", r"What Happened:"),
-    ("why", r"Why:"),
-    ("what_to_do", r"What To Do:"),
-    ("confidence", r"Confidence:"),
-]
-
-
-def get_backend(name="claude"):
-    """Get a backend module by name."""
-    if name not in _BACKENDS:
-        raise ValueError(
-            f"Unknown AI backend: {name!r}. "
-            f"Available: {', '.join(_BACKENDS)}"
-        )
-    import importlib
-    return importlib.import_module(_BACKENDS[name])
-
-
 def check_available(backend_name="claude"):
-    """Check if the specified backend is available."""
-    try:
-        backend = get_backend(backend_name)
-        return backend.is_available()
-    except (ValueError, ImportError):
+    """Whether one of the original three backends is ready, by name.
+
+    A thin wrapper: the answer is `build(spec).probe().ok` for the spec the
+    name maps to. A consumer on the object model asks its backend directly.
+
+    COMPAT(remove-after: wtf locked migrates to build/run)
+    """
+    spec = _COMPAT_PRESETS.get(backend_name)
+    if spec is None:
         return False
+    return _build(spec).probe().ok
 
 
 def build_prompt(results, prompt_path, clean_fn=None):
@@ -99,55 +100,6 @@ def build_prompt(results, prompt_path, clean_fn=None):
     prompt = prompt.replace("{dump_section}", dump_section)
 
     return prompt
-
-
-def _cache_key(fingerprint, backend_name, tool_name):
-    """Generate a cache key from fingerprint, backend, and tool name.
-
-    Including tool_name prevents cross-tool cache collisions when
-    different tools happen to produce similar fingerprints.
-    """
-    payload = json.dumps(fingerprint, sort_keys=True, default=str)
-    payload += f"\n{backend_name}\n{tool_name}"
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
-
-
-def _cache_read(cache_key, backend_name, cache_dir):
-    """Try to read a cached AI response. Returns the result dict or None."""
-    cache_file = cache_dir / f"ai_{backend_name}_{cache_key}.json"
-    if not cache_file.exists():
-        return None
-    try:
-        data = json.loads(cache_file.read_text(encoding="utf-8"))
-        cached_at = data.get("cached_at", 0)
-        if time.time() - cached_at > _CACHE_TTL_SECONDS:
-            cache_file.unlink(missing_ok=True)
-            return None
-        result = data.get("result")
-        if result:
-            result["cached"] = True
-            result["cached_at"] = cached_at
-        return result
-    except (json.JSONDecodeError, KeyError, OSError):
-        return None
-
-
-def _cache_write(cache_key, backend_name, result, cache_dir):
-    """Write an AI response to the cache."""
-    try:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        cache_file = cache_dir / f"ai_{backend_name}_{cache_key}.json"
-        data = {
-            "cached_at": time.time(),
-            "backend": backend_name,
-            "result": result,
-        }
-        cache_file.write_text(
-            json.dumps(data, indent=2, default=str),
-            encoding="utf-8",
-        )
-    except OSError:
-        pass  # Cache write failure is non-fatal
 
 
 def analyze(
@@ -188,89 +140,38 @@ def analyze(
             error: str or None
             cached: bool (if from cache)
             cached_at: float (if from cache)
+
+    This is the ORIGINAL front door, kept with its signature and its result
+    shape for the one live caller that still uses it (wtf-windows'
+    `wtf locked --ai`, tools/core/locked/locked.py). It is a thin wrapper:
+    the prompt comes from `build_prompt`, the backend from the three-name
+    table above, the answer from `cache.run` over `backend.build`, the
+    sections from `parsers.sections`. No logic of its own. The migration is
+    one call: `run(build(spec), Request(prompt), cache_dir=..., ...)`.
+
+    COMPAT(remove-after: wtf locked migrates to build/run)
     """
-    skip_cache = backend_name == "prompt-only"
-
-    # Check cache first
-    if not refresh and not skip_cache:
-        fingerprint = fingerprint_fn(results)
-        key = _cache_key(fingerprint, backend_name, tool_name)
-        cached = _cache_read(key, backend_name, cache_dir)
-        if cached:
-            return cached
-
-    backend = get_backend(backend_name)
-
-    if not backend.is_available():
-        return {
-            "success": False,
-            "raw_response": "",
-            "sections": {},
-            "error": f"AI backend '{backend_name}' is not available",
-        }
-
+    spec = _COMPAT_PRESETS.get(backend_name)
+    if spec is None:
+        return {"success": False, "raw_response": "", "sections": {},
+                "error": f"Unknown AI backend: {backend_name!r}. Available: {', '.join(_COMPAT_PRESETS)}"}
+    backend = _build(spec)
+    ready = backend.probe()
+    if not ready.ok:
+        return {"success": False, "raw_response": "", "sections": {},
+                "error": f"AI backend '{backend_name}' is not available ({ready.reason})"}
     prompt = build_prompt(results, prompt_path, clean_fn)
-    success, output = backend.invoke(
-        prompt, verbose=verbose, timeout=timeout
-    )
-
-    if not success:
-        return {
-            "success": False,
-            "raw_response": output,
-            "sections": {},
-            "error": output,
-        }
-
-    sections = parse_response(output, response_sections)
-
-    result = {
-        "success": True,
-        "raw_response": output,
-        "sections": sections,
-        "error": None,
-    }
-
-    # Cache successful results
-    if not skip_cache:
-        if not refresh:
-            fingerprint = fingerprint_fn(results)
-            key = _cache_key(fingerprint, backend_name, tool_name)
-        _cache_write(key, backend_name, result, cache_dir)
-
+    req = _Request(prompt=prompt, timeout=timeout, stream_to=sys.stdout if verbose else None)
+    resp = _run(backend, req, cache_dir=Path(cache_dir), fingerprint_extra=fingerprint_fn(results),
+                refresh=refresh, tool=tool_name)
+    if resp.status == "deferred":
+        return {"success": False, "raw_response": "", "sections": {},
+                "error": f"Prompt saved to: {resp.artifact}"}
+    if not resp.ok:
+        return {"success": False, "raw_response": resp.error, "sections": {}, "error": resp.error}
+    result = {"success": True, "raw_response": resp.text,
+              "sections": _sections(resp.text, response_sections), "error": None}
+    if resp.cached:
+        result["cached"] = True
+        result["cached_at"] = resp.cached_at
     return result
-
-
-def parse_response(text, sections=None):
-    """Parse the AI response into structured sections.
-
-    Args:
-        text: Raw AI response text
-        sections: List of (key, regex_label) tuples defining the sections.
-            Defaults to: what_happened, why, what_to_do, confidence.
-
-    Returns:
-        dict with parsed section content
-    """
-    if sections is None:
-        sections = DEFAULT_SECTIONS
-
-    parsed = {}
-
-    for i, (key, pattern) in enumerate(sections):
-        if i < len(sections) - 1:
-            next_patterns = [lbl for _, lbl in sections[i + 1:]]
-            stop = "|".join(next_patterns)
-            regex = rf"{pattern}\s*(.*?)(?=(?:{stop})|\Z)"
-        else:
-            regex = rf"{pattern}\s*(.*)"
-
-        match = re.search(regex, text, re.DOTALL)
-        if match:
-            parsed[key] = match.group(1).strip()
-
-    # If structured parsing failed, store the whole response
-    if not parsed:
-        parsed["raw"] = text.strip()
-
-    return parsed

@@ -1,0 +1,130 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_transport_openai.py",
+      "tests/test_transport_cli.py",
+      "tests/test_ailib_cache.py",
+      "tests/test_ailib_types.py",
+      "tests/test_transport_prompt_file.py",
+      "tests/test_ailib_parsers.py"
+    ],
+    "timestamp": "2026-09-05T18:12:21-04:00"
+  },
+  "results": [
+    {
+      "id": "m1",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/openai.py",
+      "note": "endpoint_is_on_prem collapses three-valued None to False for an unparseable URL, so a spec with on_prem unset and no hostname is reported as off-prem rather than unknown",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m2",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/openai.py",
+      "note": "capabilities: an explicit on_prem=False is overridden by the endpoint heuristic, so a localhost endpoint declared off-prem still advertises ON_PREM",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m3",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/openai.py",
+      "note": "_target: when the server reports an empty loaded list, a named model is no longer refused as not-loaded and falls through to be requested (which would load it from disk)",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m4",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/openai.py",
+      "note": "probe: a context of exactly ROOMY_CONTEXT (65536) tokens now triggers the oversized-window warning; boundary off-by-one",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m5",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/openai.py",
+      "note": "invoke: a whitespace-only completion is returned as 'answered' instead of the empty-content failure (and would then be cached)",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m6",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "_locate stdout-json: a chatty CLI's envelope is looked for on the first line instead of the last, so banner text before the JSON makes the answer unlocatable",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m7",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "_argv: an empty placeholder no longer removes its preceding flag, so e.g. '--schema' is passed with no value when req.schema is None",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m8",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "probe: an upper-case .CMD/.BAT shim (common on Windows) skips the --version validation and is reported ready even when it points at a deleted binary",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m9",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "invoke: the prompt is fed on stdin exactly when it was already written to {prompt_file}, and withheld from stdin when it was not, so a stdin-driven CLI gets no prompt",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m10",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "_argv: with no schema requested a schema.json containing 'null' is still written and the {schema_file} flag is kept rather than dropped",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m11",
+      "file": "dazzle_claude_config/_vendor/ailib/cache.py",
+      "note": "run: a failed response is written to the cache (a cache file appears after a failure), breaking 'written only on answered'",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m12",
+      "file": "dazzle_claude_config/_vendor/ailib/cache.py",
+      "note": "_read: a cache entry whose text is empty is served as a hit, returning an 'answered' Response with no text instead of re-asking the backend",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "survived": 6,
+    "killed": 6
+  },
+  "anomalies": []
+}

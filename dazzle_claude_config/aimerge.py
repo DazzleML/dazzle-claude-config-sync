@@ -70,6 +70,17 @@ class Hunk:
         the same statement. ``lines``: anything else."""
         o = [l for l in self.ours if l.strip()]
         t = [l for l in self.theirs if l.strip()]
+        b = [l for l in self.base if l.strip()]
+        # Both sides ADDED, where the base had nothing, and added different
+        # things: not a rewrite of any line, so "take one side whole" is the
+        # wrong advice -- keeping both is a valid selection. Found by the
+        # golden set on 2026-09-05: Opus 5 read the paragraph report's "only
+        # one side" sentence on an interleaving and obeyed it. Similar added
+        # lines stay a side-pick: both wrote the same new thing differently.
+        if o and t and not b and not any(
+                difflib.SequenceMatcher(None, a, c).ratio() >= SUPERSEDE_RATIO
+                for a in o for c in t):
+            return "additions"
         if len(o) == 1 and len(t) == 1:
             return "paragraph"
         if len(o) == len(t) and o and all(
@@ -220,7 +231,14 @@ def _quoted(phrases: list[str]) -> str:
 
 def sub_line_report(hunk: Hunk) -> list[str]:
     """For a paragraph hunk: the lines that say what line selection cannot
-    do here and what each side alone has. Empty for any other hunk."""
+    do here and what each side alone has. For an additions hunk: the one
+    line that says both CAN be kept. Empty for any other hunk."""
+    if hunk.kind == "additions":
+        o = [l for l in hunk.ours if l.strip()]
+        t = [l for l in hunk.theirs if l.strip()]
+        return [f"hunk {hunk.n}: both sides added here, where the base had nothing "
+                f"({len(o)} vs {len(t)} line{'s' if len(o) + len(t) != 2 else ''}); "
+                f"keeping both, in either order, is a valid selection."]
     if hunk.kind != "paragraph":
         return []
     o = next(l for l in hunk.ours if l.strip())

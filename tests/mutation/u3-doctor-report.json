@@ -1,0 +1,76 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_doctor_ai.py"
+    ],
+    "timestamp": "2026-09-05T18:37:49-04:00"
+  },
+  "results": [
+    {
+      "id": "d1",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "Inverts the unknown-backend guard: a misspelled ai_merge_backend passes silently into the mode/backend branches while every valid name is reported as not one of the names",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "d2",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "Prompt-only stops being a mode: a real backend prints the prompt-only sentence and is never built or probed, while prompt-only itself falls into the build/probe branch",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "d3",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "Swaps the on-prem/hosted sentence",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "d4",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "Breaks warning-only-when-there-is-one",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "d5",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "Model warning inverted against capabilities",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "d6",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "Wrong config key: the model-ignored warning is driven by the backend name",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 6
+  },
+  "anomalies": []
+}

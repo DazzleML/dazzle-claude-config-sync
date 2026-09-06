@@ -1,23 +1,32 @@
-"""The one door into the vendored AI library.
+"""The one door into the vendored AI library -- and the presets.
 
-``_vendor/ailib/`` is wtf-windows' ``lib/ai`` copied byte-verbatim (see
-``_vendor/ailib/_VENDORED.md``). Nothing in ccs imports it directly; this
-module is the only path, so that the copy can be lifted out unchanged into
-the standalone library when a second consumer adopts it, and so that the
-things ccs needs on top of it live in exactly one place:
+``_vendor/ailib/`` is the library: value types (a `Spec` you build a
+backend from, a `Request` you ask it with, a `Response` that says what
+happened), one transport per way of reaching a model (a subprocess CLI, an
+OpenAI-compatible HTTP server, a prompt written to a file), a `Backend`
+object with `probe()` and `invoke()`, a cache helper, and two generic
+readers. It knows nothing of this tool -- a test proves no host token
+appears anywhere under it -- so it can be lifted into the standalone
+library unchanged.
 
-  * the backend registry -- ``analyzer.py`` names its backends by
-    wtf-windows' module paths; that dict is REBOUND here to the copies under
-    ``_vendor``, which keeps the file verbatim instead of editing three lines
-    of it;
-  * a neutral working directory for the CLI backends -- ``claude -p`` and
-    ``codex`` inherit the caller's directory, and from a merge workspace or a
-    project tree that would pull a project's own instruction files into a
-    prompt about someone's configuration; every call runs from a throwaway
-    directory (or an explicit one) and the caller's directory is restored
-    even when the backend raises;
-  * a JSON reader -- ccs's response format is one fenced JSON block, not the
-    ``What Happened / Why`` sections the vendored parser knows.
+What lives HERE, and only here, is what is genuinely this tool's:
+
+  * the **presets** -- the named backends a person types after `--ai`, as
+    DATA over the library's transports. The library knows `cli`, `openai`
+    and `prompt-file`; this file knows that `lmstudio` means the OpenAI
+    transport at 127.0.0.1:1234 with reasoning turned off and a hint about
+    the Developer tab, that `openrouter` is the same transport at
+    openrouter.ai with a key named OPENROUTER_API_KEY, and that `claude` is
+    the Claude Code CLI with two environment variables scrubbed. Local
+    versus remote is an endpoint and a key, never code;
+  * `names()`, the list `--ai`, `ai_merge_backend` and `ccs doctor` share;
+  * `spec_for()` and `build_backend()`, which apply the person's overrides
+    (`ai_merge_endpoint`, `ai_merge_model`, `ai_merge_api_key_env`) to a
+    preset and build the object the caller talks to.
+
+Everything the caller needs from the library is re-exported here so that
+this stays the only module importing ``_vendor``: `build`, `run`,
+`Request`, `parsers`.
 
 The library returns strings and structures. It cannot write into a merge
 workspace or a live tree: everything that installs or destroys stays in
@@ -25,183 +34,96 @@ workspace or a live tree: everything that installs or destroys stays in
 """
 from __future__ import annotations
 
-import json
-import os
-import re
-import shutil
-import tempfile
-from pathlib import Path
+from ._vendor.ailib import parsers                                  # noqa: F401
+from ._vendor.ailib.backend import Backend as _Backend, build         # noqa: F401
+from ._vendor.ailib.cache import run                                 # noqa: F401
+from ._vendor.ailib.types import Request, Spec as _Spec              # noqa: F401
 
-from ._vendor.ailib import analyzer as _analyzer
-from ._vendor.ailib.backends import lmstudio as _lmstudio
-from ._vendor.ailib.backends import prompt_only as _prompt_only
+#: The mode that sends nothing: the prompt is written for a person to carry.
+#: A mode of the caller, not a backend -- `spec_for` refuses it on purpose.
+PROMPT_ONLY = "prompt-only"
 
-_BACKENDS_PKG = __name__.rsplit(".", 1)[0] + "._vendor.ailib.backends"
 
-# analyzer.py:32-36 spells the registry as ``wtf_windows.lib.ai.backends.*``.
-# Rebinding the name is enough: ``get_backend`` reads the module global at
-# call time, so the vendored file stays untouched.
-_analyzer._BACKENDS = {
-    "claude": _BACKENDS_PKG + ".claude",
-    "codex": _BACKENDS_PKG + ".codex",
-    # Authored here, in the vendored tree, and written to be contributed
-    # upstream: an HTTP endpoint is a shape the shared library wants, not a
-    # ccs peculiarity. `_VENDORED.md` records which files are upstream's and
-    # which are ours; the purity test holds for both, which is what keeps
-    # this one liftable.
-    "lmstudio": _BACKENDS_PKG + ".lmstudio",
-    "prompt-only": _BACKENDS_PKG + ".prompt_only",
+# -- the presets ----------------------------------------------------------------
+#
+# The CLI presets carry the argv that live runs proved (claude: three merges
+# on 2026-09-04/05; codex: its own --help, since its CLI is broken on this
+# box). The `-strict` variants ask for the schema on the command line and say
+# where the answer then comes out -- claude's `--output-format json` envelope
+# keeps it under `structured_output` (read from the Claude Code source on
+# 2026-09-05); codex's `-o FILE` writes the last message to a file. They are
+# experiments for the witnessed runs, not the defaults, because the fenced
+# JSON block the prompt asks for is what the live runs proved.
+
+_CLAUDE_ENV_UNSET = ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")     # the CLI refuses to nest
+_CLAUDE_CANDIDATES = ("~/.local/bin/claude.exe", "~/.local/bin/claude")
+_CODEX_CANDIDATES = ("%APPDATA%/npm/codex.cmd", "%LOCALAPPDATA%/Microsoft/WinGet/Links/codex.cmd")
+#: The model the claude presets ask for when ai_merge_model is unset. The
+#: maintainer's word (2026-09-05): merges through the Claude Code CLI use
+#: Opus 5, not whatever the CLI's session happens to default to -- which is
+#: a different model, and which a merge should not silently inherit.
+CLAUDE_DEFAULT_MODEL = "claude-opus-5"
+
+PRESETS: dict[str, _Spec] = {
+    "claude": _Spec("cli", name="claude", model=CLAUDE_DEFAULT_MODEL,
+                    command=("claude", "--output-format", "text", "--model", "{model}", "-p", "-"),
+                    env_unset=_CLAUDE_ENV_UNSET, candidates=_CLAUDE_CANDIDATES, on_prem=False),
+    "claude-strict": _Spec("cli", name="claude-strict", model=CLAUDE_DEFAULT_MODEL,
+                           command=("claude", "--output-format", "json", "--model", "{model}",
+                                    "--json-schema", "{schema}", "-p", "-"),
+                           answer="stdout-json:structured_output",
+                           env_unset=_CLAUDE_ENV_UNSET, candidates=_CLAUDE_CANDIDATES, on_prem=False),
+    "codex": _Spec("cli", name="codex",
+                   command=("codex", "exec", "--skip-git-repo-check", "-m", "{model}", "-"),
+                   candidates=_CODEX_CANDIDATES, on_prem=False),
+    "codex-strict": _Spec("cli", name="codex-strict",
+                          command=("codex", "exec", "--skip-git-repo-check", "-m", "{model}",
+                                   "--output-schema", "{schema_file}", "-o", "{output_file}", "-"),
+                          answer="file:{output_file}", candidates=_CODEX_CANDIDATES, on_prem=False),
+    "lmstudio": _Spec("openai", name="lmstudio", endpoint="http://127.0.0.1:1234/v1",
+                      extra=(("reasoning_effort", "none"),),
+                      hint="in LM Studio: the Developer tab"),
+    "ollama": _Spec("openai", name="ollama", endpoint="http://127.0.0.1:11434/v1"),
+    "openai": _Spec("openai", name="openai", endpoint="https://api.openai.com/v1",
+                    credential_env="OPENAI_API_KEY"),
+    "openrouter": _Spec("openai", name="openrouter", endpoint="https://openrouter.ai/api/v1",
+                        credential_env="OPENROUTER_API_KEY"),
 }
 
-PROMPT_ONLY = "prompt-only"
-LMSTUDIO = "lmstudio"
+
+def names() -> tuple[str, ...]:
+    """Everything `--ai` and `ai_merge_backend` accept: the mode that sends
+    nothing, then the presets. `userconfig` duplicates this list ON PURPOSE
+    (a config file must be checkable without importing the AI machinery);
+    `ccs doctor` and a test compare the two."""
+    return (PROMPT_ONLY, *PRESETS)
 
 
-def backend_names() -> tuple[str, ...]:
-    """The selectable backends, in registry order."""
-    return tuple(_analyzer._BACKENDS)
-
-
-def get_backend(name: str):
-    """The backend module for `name`; ValueError names the known ones."""
-    return _analyzer.get_backend(name)
-
-
-def check_available(name: str) -> bool:
-    """False for an unknown backend or one whose CLI is not installed."""
-    return _analyzer.check_available(name)
-
-
-#: Which env var names the model, per backend. The vendored CLI backends
-#: build their own argv and take no model parameter, so a model chosen out
-#: here reaches them only through the environment. The Claude Code CLI reads
-#: ANTHROPIC_MODEL (verified: an invalid value comes back as
-#: `[claude-code:unrecognized_model]`), so claude is covered from here.
-#: codex has `-m/--model` but no env equivalent we have verified, so it is
-#: absent from this table ON PURPOSE and `model_is_honoured` says so -- a
-#: setting that quietly does nothing is the defect this table exists to
-#: stop, not one to spread. Giving codex its flag means passing
-#: configuration INTO the call rather than around it, which is queued in
-#: _vendor/ailib/_VENDORED.md.
-_MODEL_ENV = {"claude": "ANTHROPIC_MODEL"}
-
-
-def model_is_honoured(name: str) -> bool:
-    """True when `name` can actually be told which model to use.
-
-    `lmstudio` takes it directly; `claude` through the environment; `codex`
-    not yet, because its model is an argv flag and the backend contract has
-    nowhere to pass one; `prompt-only` has no model at all, which is not a
-    gap in the same sense -- there is nothing there to honour.
-    """
-    return name == LMSTUDIO or name in _MODEL_ENV
-
-
-def invoke(name: str, prompt: str, *, verbose: bool = False, timeout: int = 120,
-           cwd: str | os.PathLike | None = None,
-           model: str | None = None) -> tuple[bool, str]:
-    """Run `prompt` through backend `name`; ``(success, text)`` as the
-    vendored contract has it (``prompt-only`` answers ``(False, where it
-    wrote the prompt)``).
-
-    The vendored ``invoke`` takes no working directory and the CLI backends
-    run in the inherited one. A single-threaded CLI can afford ``os.chdir``
-    around the call: the caller's directory is restored in ``finally``, and
-    the throwaway directory is removed afterwards. Pass `cwd` to run
-    somewhere specific instead.
-    """
-    backend = get_backend(name)
-    if model and name == LMSTUDIO:
-        # A server-shaped backend takes its model as state, a CLI takes it
-        # as environment; the caller says `model=` once and this decides how
-        # it lands. Two callers each choosing a mechanism is how the model
-        # came to be passed twice by two routes.
-        _lmstudio.configure(model=model)
-    before = os.getcwd()
-    env_var = _MODEL_ENV.get(name) if model else None
-    env_before = os.environ.get(env_var) if env_var else None
-    scratch: str | None = None
+def spec_for(name: str, *, endpoint: str | None = None, model: str | None = None,
+             api_key_env: str | None = None) -> _Spec:
+    """The preset `name` with the person's overrides applied. prompt-only is
+    a mode of the caller, not a backend, and is refused here on purpose."""
+    if name == PROMPT_ONLY:
+        raise ValueError(f"{PROMPT_ONLY!r} is not a backend: it writes the prompt and stops")
     try:
-        if env_var:
-            os.environ[env_var] = model
-        if cwd is None:
-            scratch = tempfile.mkdtemp(prefix="ccs-ai-")
-            os.chdir(scratch)
-        else:
-            os.chdir(cwd)
-        return backend.invoke(prompt, verbose=verbose, timeout=timeout)
-    finally:
-        os.chdir(before)
-        if env_var:                       # restore, even on a raise
-            if env_before is None:
-                os.environ.pop(env_var, None)
-            else:
-                os.environ[env_var] = env_before
-        if scratch is not None:
-            shutil.rmtree(scratch, ignore_errors=True)
+        spec = PRESETS[name]
+    except KeyError:
+        raise ValueError(f"unknown AI backend {name!r} -- one of: {', '.join(names())}") from None
+    changes = {}
+    if endpoint:
+        changes["endpoint"] = str(endpoint)
+    if model:
+        changes["model"] = str(model)
+    if api_key_env:
+        changes["credential_env"] = str(api_key_env)
+    return spec.with_(**changes) if changes else spec
 
 
-# The response cache, re-exported. Keyed on a fingerprint the CALLER builds
-# (ccs: the hashes of base, ours, theirs, the rules file and the dossier), the
-# backend, and a tool name so two tools' fingerprints cannot collide.
-cache_key = _analyzer._cache_key
-cache_read = _analyzer._cache_read
-cache_write = _analyzer._cache_write
-CACHE_TTL_SECONDS = _analyzer._CACHE_TTL_SECONDS
-
-
-def set_prompt_dir(path: str | os.PathLike) -> None:
-    """Where ``prompt-only`` writes its ``prompt_<timestamp>.md``."""
-    _prompt_only.set_output_dir(Path(path))
-
-
-def set_endpoint(url: str | None = None) -> None:
-    """Where the local model server is, and the shape its answers must take.
-
-    Named for what it sets, like `set_prompt_dir` beside it -- an earlier
-    spelling (`set_local`) named the BACKEND instead, and took the model
-    too, which left `aistep` handing the model to two different mechanisms
-    and the reader working out which one applied. `invoke(model=...)` is now
-    the only way to say which model, for every backend; this says only where
-    the server is. The schema rides along because it is ccs's, not the
-    library's: the backend enforces a shape it is given, never one it knows.
-    """
-    from .aiprompt import ANSWER_SCHEMA
-    _lmstudio.configure(endpoint=url, schema=ANSWER_SCHEMA)
-
-
-def local_describe(model: str | None = None) -> str:
-    """`ccs doctor`'s line for the local endpoint: where, and what is loaded.
-
-    Takes the model to CHECK and does not configure anything to answer --
-    a health check that mutates the thing it reports on is one you cannot
-    run twice and trust.
-    """
-    return _lmstudio.describe(model or None)
-
-
-def local_context_is_roomy() -> bool:
-    """True when the loaded model's context window is far larger than a merge
-    needs -- reachable, but slow enough that a person will think it hung."""
-    return _lmstudio.context_is_roomy()
-
-
-_JSON_FENCE = re.compile(r"```json[ \t]*\r?\n(.*?)\r?\n[ \t]*```", re.DOTALL | re.IGNORECASE)
-
-
-def parse_json_block(text: str | None):
-    """The LAST fenced ```json block in `text`, parsed; None when there is
-    none or it is not valid JSON.
-
-    Last, not first: a model that thinks aloud may draft a block and then
-    revise it, and the revision is the answer.
-    """
-    if not text:
-        return None
-    blocks = _JSON_FENCE.findall(text)
-    if not blocks:
-        return None
-    try:
-        return json.loads(blocks[-1])
-    except ValueError:
-        return None
+def build_backend(opts) -> _Backend:
+    """A backend for `opts` (an `aistep.AiOptions`, or anything with
+    `backend`, `endpoint`, `model` and `api_key_env`). The single seam a test
+    replaces to keep a real preset and a real cache while faking the
+    transport."""
+    return build(spec_for(opts.backend, endpoint=getattr(opts, "endpoint", None),
+                          model=getattr(opts, "model", None),
+                          api_key_env=getattr(opts, "api_key_env", None)))

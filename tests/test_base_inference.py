@@ -348,3 +348,50 @@ def test_cli_diff_path_crlf_vs_lf_reads_identical(env, capsys):
     out = capsys.readouterr().out
     assert rc == 0, out
     assert "identical" in out
+
+
+# -- a deep checkout path (Windows MAX_PATH) ----------------------------------
+
+def test_infer_base_survives_a_deep_checkout_path(tmp_path):
+    """Git for Windows stats "<40-hex>:<path>" as a FILE before treating it as
+    a revision. At a checkout path long enough that cwd + 41 + len(path)
+    crosses 260 characters, that stat fails with "Filename too long" (rc 128),
+    infer_base skips every candidate, and the merge is refused as "no common
+    ancestor" -- while `HEAD:<path>`, 36 characters shorter, still works.
+    Measured 2026-09-05 on a scratch world at a 198-character checkout path.
+
+    The cure is the trailing "--" on every `git show <rev>:<path>`. This test
+    pads the checkout to the measured 198-character path (git can still write
+    its own objects there: a 205-character checkout could not) and uses a
+    file name long enough that "<sha>:<path>" reaches 280 characters. On
+    POSIX there is no limit and the test is a plain base-inference check.
+
+    Predicted before the fix (Windows): FAILS -- infer_base returns None."""
+    import subprocess as sp
+    from conftest import GIT_ID
+    target = 198
+    room = target - len(str(tmp_path / "checkout")) - 1
+    if room < 1:
+        import pytest
+        pytest.skip(f"tmp_path is already {len(str(tmp_path))} chars; cannot pad to {target}")
+    co = tmp_path / ("p" * room) / "checkout"
+    rel = "dotclaude/a-name-long-enough-to-cross-the-limit.md"     # 50 chars
+    (co / "dotclaude").mkdir(parents=True)
+    assert len(str(co)) == target, str(co)
+    assert len(str(co)) + 42 + len(rel) > 260
+
+    def run(*a):
+        r = sp.run(["git", *GIT_ID, "-C", str(co), *a], capture_output=True, text=True)
+        assert r.returncode == 0, f"git {a}: {r.stderr}"
+
+    sp.run(["git", "init", "-q", str(co)], capture_output=True, check=True)
+    (co / rel).write_bytes(b"k\nnote: old\nz\n")
+    run("add", "-A"); run("commit", "-qm", "base")
+    (co / rel).write_bytes(b"k\nnote: theirs\nz\n")
+    run("add", "-A"); run("commit", "-qm", "theirs")
+    cands: list = []
+    found = merge.infer_base(co, rel, ours=b"k\nnote: mine\nz\n", theirs=b"k\nnote: theirs\nz\n",
+                             candidates=cands)
+    assert found is not None, f"no base at a {len(str(co))}-char checkout path; candidates={cands}"
+    assert merge._normalize_eol(found[0]) == b"k\nnote: old\nz\n"
+    assert len(cands) == 2, cands

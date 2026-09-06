@@ -307,7 +307,7 @@ def _head_items(manifest: Manifest, checkout: Path, roots: dict[str, Path],
     states = _checkout_states(checkout)      # one porcelain call for the whole run
     for entry, rel, live in _head_candidates(manifest, checkout, roots):
         repo_path = f"{entry.repo}/{rel}" if rel else entry.repo
-        p = subprocess.run(["git", "show", f"HEAD:{repo_path}"],
+        p = subprocess.run(["git", "show", f"HEAD:{repo_path}", "--"],
                            cwd=str(checkout), capture_output=True)
         if p.returncode != 0 or not p.stdout:
             continue
@@ -516,7 +516,18 @@ def infer_base(checkout: Path, repo_path: str, ours: bytes, theirs: bytes,
 
     scored: list[tuple[int, bytes, str, bool, bool]] = []   # (score, blob, sha7, rejected, eq_theirs)
     for sha in shas:
-        p = subprocess.run(["git", "show", f"{sha}:{repo_path}"],
+        # The trailing "--" is git's own separator, on every platform: what
+        # precedes it is a revision, so git never stats it as a path. Without
+        # it git first checks whether "<40-hex>:<path>" exists as a FILE
+        # relative to cwd (on any OS -- the same check that yields "ambiguous
+        # argument" when such a file exists). On Windows that stat itself
+        # fails once cwd + 41 + len(path) crosses 260 characters, "Filename
+        # too long" (rc 128): every candidate is skipped and the merge is
+        # refused as "no common ancestor". Measured 2026-09-05 on a scratch
+        # world at a 198-character cwd; "HEAD:" survived where the full sha
+        # did not. Universal git hygiene, not a platform branch: every
+        # `git show <rev>:<path>` in this package carries the "--".
+        p = subprocess.run(["git", "show", f"{sha}:{repo_path}", "--"],
                            cwd=str(checkout), capture_output=True)
         if p.returncode != 0 or not p.stdout:
             continue
@@ -1407,7 +1418,7 @@ def two_way_labels(manifest: Manifest, checkout: Path,
             if not live.is_file():
                 continue
             repo_path = f"{entry.repo}/{rel}" if rel else entry.repo
-            p_ = subprocess.run(["git", "show", f"HEAD:{repo_path}"],
+            p_ = subprocess.run(["git", "show", f"HEAD:{repo_path}", "--"],
                                 cwd=str(checkout), capture_output=True)
             if p_.returncode != 0 or not p_.stdout:
                 continue

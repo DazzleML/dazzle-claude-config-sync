@@ -771,34 +771,47 @@ def _doctor(args) -> int:
     # the setting that was documented for three minor versions and never read
     try:
         from . import ailib as _ailib
-        _names = _ailib.backend_names()
+        _names = _ailib.names()
         _backend = str(cfg.get("ai_merge_backend") or _ailib.PROMPT_ONLY)
         if _backend not in _names:
             warn(f"ai_merge_backend is {_backend!r}, not one of {', '.join(_names)} -- "
                  f"`ccs merge --ai` will refuse it")
         elif _backend == _ailib.PROMPT_ONLY:
+            # the one comparison left: a MODE of the caller, not a backend
             ok("ai merge: prompt-only (writes the prompt, sends nothing) -- set "
-               "ai_merge_backend or pass --ai claude|codex to use a backend")
-        elif _backend == _ailib.LMSTUDIO:
-            # Not "is a file there" but "is a server there, with a model" --
-            # and the sentence has to say which, or a person restarts the
-            # wrong thing.
-            _ailib.set_endpoint(cfg.get("ai_merge_endpoint") or None)
-            _line = _ailib.local_describe(cfg.get("ai_merge_model") or "")
-            _well = _ailib.check_available(_backend) and not _ailib.local_context_is_roomy()
-            (ok if _well else warn)(f"ai merge backend lmstudio: {_line}")
-        elif _ailib.check_available(_backend):
-            ok(f"ai merge backend {_backend}: its CLI was found")
+               "ai_merge_backend or pass --ai <backend> to use one")
         else:
-            warn(f"ai merge backend {_backend}: its CLI is not on PATH -- `ccs merge --ai` "
-                 f"will say so; prompt-only always works")
+            # Doctor does not know what kind of thing the backend is. It
+            # builds it from the preset and the person's overrides, asks it
+            # whether it is ready, and prints what it says -- a CLI says
+            # whether its executable was found, a server says what is loaded
+            # and how big its window is, a hosted provider says which
+            # variable it looked in for its key.
+            _b = _ailib.build(_ailib.spec_for(_backend, endpoint=cfg.get("ai_merge_endpoint"),
+                                              model=cfg.get("ai_merge_model"),
+                                              api_key_env=cfg.get("ai_merge_api_key_env")))
+            _ready = _b.probe()
+            _caps = _b.capabilities
+            _where = ("your text stays on your network" if "data_stays_on_prem" in _caps
+                      else "your text goes to a hosted model")
+            if _ready.ok:
+                ok(f"ai merge backend {_backend}: {_ready.reason} -- {_where}")
+                if _ready.warning:
+                    warn(f"ai merge backend {_backend}: {_ready.warning}")
+            else:
+                warn(f"ai merge backend {_backend}: {_ready.reason} -- `ccs merge --ai` will "
+                     f"say so; prompt-only always works")
+            # Inside the try ON PURPOSE: everything above is bound only when
+            # the import succeeded, and this once sat below the except -- so
+            # the one configuration where the person most needed a sentence
+            # (library broken, model set) got a NameError.
+            _m = cfg.get("ai_merge_model")
+            if _m and "model" not in _caps:
+                warn(f"ai_merge_model is {_m!r} but the {_backend} backend cannot be told which "
+                     f"model to use -- it would be ignored")
     except Exception as e:                       # the vendored copy missing or broken
         warn(f"ai merge library: {e} -- the vendored copy under _vendor/ailib is missing "
              f"or broken; even prompt-only cannot run")
-    _m = cfg.get("ai_merge_model")
-    if _m and _backend in _names and not _ailib.model_is_honoured(_backend):
-        warn(f"ai_merge_model is {_m!r} but the {_backend} backend cannot be told which "
-             f"model to use -- it would be ignored; claude and lmstudio honour it")
     if cfg.get("ai_merge_command"):
         warn("ai_merge_command is set but no longer read -- the AI merge is configured "
              "with ai_merge_backend (see docs/ai-merge.md); the key was documented since "
@@ -1047,10 +1060,13 @@ day to day, once it is installed:
                             help="ask a model to resolve the hunks both sides changed, "
                                  "under the rules you wrote (~/claude/ccs-merge-rules/); "
                                  "the proposal lands in <file>.merged-ai beside yours and "
-                                 "installs nothing. BACKEND: claude, codex, lmstudio (a "
-                                 "local OpenAI-compatible server -- nothing leaves your "
-                                 "network), or prompt-only (writes the prompt for you to "
-                                 "carry anywhere; the default unless ai_merge_backend is set)")
+                                 "installs nothing. BACKEND is a preset: claude or codex "
+                                 "(the CLIs), lmstudio or ollama (a server on this machine "
+                                 "-- nothing leaves your network), openai or openrouter (a "
+                                 "hosted provider, keyed by the environment variable the "
+                                 "preset names), or prompt-only (writes the prompt for you "
+                                 "to carry anywhere; the default unless ai_merge_backend is "
+                                 "set). `ccs doctor` says what the configured one is ready to do")
             sp.add_argument("--ai-response", default=None, metavar="FILE",
                             help="with --ai: apply an answer you carried back (one JSON "
                                  "block, as the prompt asks) instead of calling a backend")
@@ -1324,7 +1340,7 @@ def _classify(checkout, d, rel):
     repo_path = f"{d.entry.repo}/{rel}" if rel else d.entry.repo
     lv = d.live_base / rel if rel else d.live_base
     import subprocess
-    shown = subprocess.run(["git", "show", f"HEAD:{repo_path}"],
+    shown = subprocess.run(["git", "show", f"HEAD:{repo_path}", "--"],
                            cwd=str(checkout), capture_output=True)
     # Only the return code answers "is this path in HEAD?". An empty file
     # that IS committed resolves fine with empty output, and treating that
@@ -1610,7 +1626,7 @@ def _ai_options(args, roots):
     from . import ailib, airules, aistep
     cfg = userconfig.load(roots["USER_CLAUDE"])
     backend = args.ai if args.ai != "auto" else (cfg.get("ai_merge_backend") or aistep.PROMPT_ONLY)
-    names = ailib.backend_names()
+    names = ailib.names()
     if backend not in names:
         print(c("red", f"unknown AI backend {backend!r}")
               + c("dim", f" -- one of: {', '.join(names)}"))
@@ -1623,11 +1639,21 @@ def _ai_options(args, roots):
         verbose=bool(getattr(args, "ai_verbose", False)),
         response=pathlib.Path(args.ai_response) if getattr(args, "ai_response", None) else None,
         endpoint=cfg.get("ai_merge_endpoint") or None,
-        model=cfg.get("ai_merge_model") or None)
+        model=cfg.get("ai_merge_model") or None,
+        api_key_env=cfg.get("ai_merge_api_key_env") or None)
 
 
 def _n_lines(n: int) -> str:
     return f"{n} line{'' if n == 1 else 's'}"
+
+
+def _ai_counts(out) -> str:
+    """The classification counts, first under the headline (#19, criterion
+    1): how much of the file the model was given, and how much it never saw.
+    git's diff3 did the classifying; the model only ever sees the hunks."""
+    h = out.hunks
+    return (f"    hunks: {h} both sides changed -- the model's; "
+            f"{out.clean_lines} line{'s' if out.clean_lines != 1 else ''} git resolved on its own, never sent")
 
 
 def _print_ai_report(r, args) -> None:
@@ -1643,6 +1669,7 @@ def _print_ai_report(r, args) -> None:
                            f"file, nothing for the model to decide"))
         elif out.status == "prompt-written":
             print(f"{c('cyan', 'prompt written')} {label} {c('dim', '-- ' + str(out.prompt_path))}")
+            print(c("dim", _ai_counts(out)))
             print(c("dim", "    answer it as one JSON block into ") + c("bold", str(out.response_path))
                   + c("dim", f" (or pass --ai-response FILE), then re-run ")
                   + c("bold", f"ccs merge {label} --ai"))
@@ -1653,7 +1680,14 @@ def _print_ai_report(r, args) -> None:
             print(f"{c('green', 'staged')} {label} "
                   + c("dim", f"-- the AI's proposal ({how}) at {out.proposal}; "
                              f"validation passed; nothing installed"))
+            print(c("dim", _ai_counts(out)))
             print(c("dim", f"    {out.rules}"))
+            if getattr(out, "backend_identity", ""):
+                # who actually answered, and what the request could make it
+                # honour -- the line the witnessed runs are read by
+                _who = out.model_used or "(model not reported)"
+                _held = ", ".join(out.honoured) if out.honoured else "nothing enforced"
+                print(c("dim", f"    answered by {_who} via {out.backend_identity}; {_held}"))
             for n, rules, why in out.rationales:
                 cite = f" [{', '.join(rules)}]" if rules else ""
                 print(c("dim", f"    hunk {n}: {why}{cite}"))
@@ -1733,7 +1767,7 @@ def _launch_three_way(lv, rp, target, repo_label, tool, checkout, roots, repo,
                else "one side is absent, so there is no history to attribute against")
         print(c("yellow", f"no base possible -- {why}; opening the two-way view"))
         return _two_way_fallback(lv, rp, target, repo_label, tool)
-    shown = subprocess.run(["git", "show", f"HEAD:{repo_label}"], cwd=str(checkout),
+    shown = subprocess.run(["git", "show", f"HEAD:{repo_label}", "--"], cwd=str(checkout),
                            capture_output=True)
     theirs = shown.stdout if shown.returncode == 0 else b""
     if supplied is not None and supplied[0] is not None:

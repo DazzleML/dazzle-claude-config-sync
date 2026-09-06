@@ -138,26 +138,44 @@ def test_the_rules_file_is_loaded_and_named(tmp_path):
 GOOD_REPLY = "Thinking...\n```json\n" + json.dumps(GOOD) + "\n```\n"
 
 
-class _Fake:
-    calls: list[str] = []
-    reply = GOOD_REPLY
-    ok = True
+from dazzle_claude_config._vendor.ailib import backend as _backend_mod
+from dazzle_claude_config._vendor.ailib.types import Readiness, Response
 
-    @classmethod
-    def invoke(cls, name, prompt, *, verbose=False, timeout=120, cwd=None, model=None):
-        cls.model = model            # what the step asked for, for the model tests
-        cls.calls.append(name)
-        return cls.ok, cls.reply
+
+class _FakeTransport:
+    """A fake TRANSPORT, installed under the name the claude and codex presets
+    use ("cli"), so the real preset, the real Backend, the real cache and the
+    real record all run and only the subprocess is faked. `calls` is the
+    preset name per invocation; `model` is the spec's model the last call
+    carried; `requests` holds every (spec, request) pair."""
+
+    def __init__(self):
+        self.calls: list[str] = []
+        self.requests: list = []
+        self.model = None
+        self.ready = Readiness(True, "fake: its CLI was found")
+        self.response = Response("answered", text=GOOD_REPLY, model_used="fake-model",
+                                 honoured=("model", "schema"))
+
+    def probe(self, spec):
+        return self.ready
+
+    def invoke(self, spec, req):
+        self.calls.append(spec.name)
+        self.requests.append((spec, req))
+        self.model = spec.model
+        return self.response
+
+    def capabilities(self, spec):
+        return frozenset({"model", "schema", "stream"})
 
 
 @pytest.fixture
 def fake(monkeypatch):
-    _Fake.calls = []
-    _Fake.ok = True
-    _Fake.reply = GOOD_REPLY          # a test that sets an error reply must not leak it
-    monkeypatch.setattr(aistep.ailib, "invoke", _Fake.invoke)
-    monkeypatch.setattr(aistep.ailib, "check_available", lambda name: True)
-    return _Fake
+    t = _FakeTransport()
+    _backend_mod.transport_for("cli")                  # load the builtins, then shadow one
+    monkeypatch.setitem(_backend_mod._TRANSPORTS, "cli", t)
+    return t
 
 
 def test_a_live_backend_is_invoked_once_then_served_from_the_cache(tmp_path, fake):
@@ -165,7 +183,7 @@ def test_a_live_backend_is_invoked_once_then_served_from_the_cache(tmp_path, fak
     out = _run(w, _opts(tmp_path, backend="claude"))
     assert out.status == "proposed" and out.backend == "claude" and out.cached is False
     assert fake.calls == ["claude"]
-    assert list((tmp_path / "cache").glob("ai_claude_*.json"))
+    assert list((tmp_path / "cache").glob("ccs-merge_claude_*.json"))   # {tool}_{preset}_{key}.json
     again = _run(w, _opts(tmp_path, backend="claude"))
     assert again.status == "proposed" and again.cached is True
     assert fake.calls == ["claude"]                         # not invoked again
@@ -183,19 +201,19 @@ def test_the_cache_key_changes_with_the_inputs(tmp_path, fake):
 
 def test_a_backend_failure_writes_nothing_and_carries_the_error(tmp_path, fake):
     w = _world(tmp_path)
-    fake.ok = False
-    fake.reply = "Claude CLI not found"
+    fake.response = Response("failed", error="Claude CLI not found")
     out = _run(w, _opts(tmp_path, backend="claude"))
     assert out.status == "backend-failed" and "not found" in out.error
     assert not airecord.proposal_path(w["merged"]).exists()
     assert not airecord.record_path(w["merged"]).exists()
 
 
-def test_an_unavailable_backend_is_refused_before_any_prompt(tmp_path, monkeypatch):
+def test_an_unavailable_backend_is_refused_before_any_prompt(tmp_path, fake):
     w = _world(tmp_path)
-    monkeypatch.setattr(aistep.ailib, "check_available", lambda name: False)
+    fake.ready = Readiness(False, "codex is not on PATH")
     out = _run(w, _opts(tmp_path, backend="codex"))
-    assert out.status == "backend-failed" and "codex" in out.error
+    assert out.status == "backend-failed" and "codex" in out.error and "not on PATH" in out.error
+    assert fake.calls == []                                   # refused before any request
     assert not list((tmp_path / "prompts").glob("*")) if (tmp_path / "prompts").exists() else True
 
 
@@ -260,13 +278,16 @@ def test_the_cache_key_includes_the_ancestry_facts_and_the_base_kind(tmp_path, f
     assert fake.calls == ["claude", "claude", "claude"]
 
 
-def test_a_cache_entry_without_an_answer_falls_through_to_the_backend(tmp_path, fake, monkeypatch):
-    """Mutation survivor N6: a hit that carries no raw_response is not an
-    answer; the backend is asked, rather than a KeyError."""
+def test_a_cache_entry_without_an_answer_falls_through_to_the_backend(tmp_path, fake):
+    """Mutation survivor N6: a hit that carries no text is not an answer;
+    the backend is asked, rather than an empty proposal or a KeyError."""
+    import time
     w = _world(tmp_path)
-    monkeypatch.setattr(aistep.ailib, "cache_read", lambda *a, **k: {"success": True})
+    _run(w, _opts(tmp_path, backend="claude"))
+    (f,) = (tmp_path / "cache").glob("ccs-merge_claude_*.json")
+    f.write_text(json.dumps({"cached_at": time.time(), "response": {"text": ""}}), encoding="utf-8")
     out = _run(w, _opts(tmp_path, backend="claude"))
-    assert out.status == "proposed" and out.cached is False and fake.calls == ["claude"]
+    assert out.status == "proposed" and out.cached is False and fake.calls == ["claude", "claude"]
 
 
 def test_every_paragraph_hunk_gets_its_report(tmp_path):
@@ -310,12 +331,11 @@ def test_two_models_are_two_cache_entries(tmp_path, fake):
     assert fake.calls == ["claude", "claude"], "a different model must not reuse it"
 
 
-def test_a_backend_that_cannot_honour_a_model_says_so_rather_than_pretending():
-    """codex takes `-m` on its argv, and its argv belongs to the vendored
-    copy we do not edit. So it is absent from the table ON PURPOSE, and the
-    absence is legible rather than silent."""
+def test_every_preset_can_be_told_which_model_and_the_capability_says_so():
+    """Once, codex could not be told a model: its flag was argv inside a
+    copy we did not edit, and a table in the facade admitted it. Now the
+    preset carries `-m {model}` and the backend's own capabilities say so --
+    no table, nothing to keep in step."""
     from dazzle_claude_config import ailib
-    assert ailib.model_is_honoured("claude") is True
-    assert ailib.model_is_honoured(ailib.LMSTUDIO) is True
-    assert ailib.model_is_honoured("codex") is False
-    assert ailib.model_is_honoured(ailib.PROMPT_ONLY) is False
+    for name in ("claude", "codex", "lmstudio", "openrouter"):
+        assert "model" in ailib.build(ailib.spec_for(name)).capabilities, name

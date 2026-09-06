@@ -25,22 +25,41 @@ install.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from . import ailib, aimerge, aiprompt, airecord, airules, basefind
+from . import aimerge, aiprompt, airecord, airules, basefind
 from .seeddecisions import norm_sha
 
-PROMPT_ONLY = ailib.PROMPT_ONLY
+# `ailib` -- and through it the vendored library -- is imported INSIDE the
+# two functions that need it, never here. This module is imported by
+# `merge.py`, which is imported by `cli.py` at startup, so a module-level
+# import would make every verb of ccs depend on the AI library being
+# importable: a broken or missing vendored copy took the whole CLI down with
+# a traceback before an argument was parsed, and `ccs doctor`'s "missing or
+# broken" warning could never run. Found by the checklist sweep of
+# 2026-09-05 (run-02, step 2.5).
+#: The mode that sends nothing: the prompt is written for a person to carry.
+#: A mode of the CALLER, so it is defined here; `ailib.PROMPT_ONLY` spells
+#: the same string for the presets' side and a test pins the two equal.
+PROMPT_ONLY = "prompt-only"
 #: The cache namespace: two tools' fingerprints cannot collide.
 TOOL_NAME = "ccs-merge"
 
 
 @dataclass
 class AiOptions:
-    """What the CLI decided; one parameter into ``merge.run``."""
+    """What the CLI decided; one parameter into ``merge.run``.
+
+    `backend` is a preset name (or prompt-only, the mode that sends
+    nothing); `endpoint`, `model` and `api_key_env` override the preset's
+    own values and are applied by `ailib.build_backend`. Nothing here knows
+    which of them a given backend uses -- that is the preset's business.
+    """
     rules_dir: Path
     prompts_dir: Path
     cache_dir: Path
@@ -49,16 +68,21 @@ class AiOptions:
     verbose: bool = False          # --ai-verbose: stream the backend
     response: Path | None = None   # --ai-response FILE: an answer carried back
     timeout: int = 120
-    endpoint: str | None = None    # lmstudio: the OpenAI-compatible server
-    model: str | None = None       # lmstudio: the model id to pin, "" = whatever is loaded
+    endpoint: str | None = None    # override the preset's server address
+    model: str | None = None       # override the preset's model
+    api_key_env: str | None = None  # override the NAME of the credential's env var
 
 
 @dataclass
 class AiOutcome:
     """What happened to one file, for the caller's report and record."""
     status: str                    # no-hunks | prompt-written | proposed | rejected | backend-failed
-    hunks: int = 0
-    backend: str = ""
+    hunks: int = 0                 # regions both sides changed: the model's
+    clean_lines: int = 0           # lines git resolved on its own: never sent
+    backend: str = ""              # the preset's name, as the person typed it
+    backend_identity: str = ""     # what actually answered: transport, address, model
+    model_used: str = ""           # the model the backend reports having used
+    honoured: tuple[str, ...] = ()  # the request fields the backend enforced (schema, model...)
     rules: str = ""                # the rules line (path @ sha, or none)
     proposal: Path | None = None
     record: airecord.Record | None = None
@@ -84,7 +108,8 @@ def _safe(label: str) -> str:
 
 def _answer_data(text: str):
     """The JSON in an answer: the last fenced block, else the whole text."""
-    data = ailib.parse_json_block(text)
+    from . import ailib
+    data = ailib.parsers.json_block(text)
     if data is not None:
         return data
     try:
@@ -114,23 +139,25 @@ def ai_step(*, label: str, ours: Path, base: Path, theirs: Path, merged: Path,
     rules = airules.load_rules(label, opts.rules_dir)
     prompt = aiprompt.build_prompt(label, parsed.hunks, rules, dossier)
     out = AiOutcome("pending", hunks=len(parsed.hunks), backend=opts.backend,
+                    clean_lines=sum(len(s.lines) for s in parsed.segments if s.kind == "clean"),
                     rules=rules.describe(),
                     reports=[l for h in parsed.hunks for l in aimerge.sub_line_report(h)],
                     response_path=airecord.response_path(merged))
     proposal_path = airecord.proposal_path(merged)
     record_path = airecord.record_path(merged)
 
+    # What the proposal was made FROM, on this side of the seam: the three
+    # sides, the rules, how the base was chosen, the structured ancestry
+    # facts. Nothing about the backend -- which model, which server -- is
+    # here, because the backend supplies its own identity to the cache key
+    # (`run()` below) and this file never has to know which of those facts
+    # matter for which transport. For an answer that never went through a
+    # backend (a file carried back, or prompt-only) the record's
+    # fingerprint is the hash of these inputs alone.
     fingerprint = {"base": norm_sha(b), "ours": norm_sha(o), "theirs": norm_sha(t),
                    "rules": rules.sha, "base_kind": base_kind, **(facts or {})}
-    # Two models are two answerers, whichever backend reaches them, so the
-    # model belongs in the key for ALL of them -- not just the local server.
-    # Without it, changing ai_merge_model returns the previous model's answer
-    # from cache and the person concludes the setting did nothing.
-    if opts.model and ailib.model_is_honoured(opts.backend):
-        fingerprint["model"] = opts.model
-    if opts.backend == ailib.LMSTUDIO:
-        fingerprint["endpoint"] = opts.endpoint or ""
-    key = ailib.cache_key(fingerprint, opts.backend, TOOL_NAME)
+    key = hashlib.sha256(json.dumps(fingerprint, sort_keys=True, default=str)
+                         .encode("utf-8")).hexdigest()[:16]
 
     # -- the answer ------------------------------------------------------------
     answer: str | None = None
@@ -149,47 +176,43 @@ def ai_step(*, label: str, ours: Path, base: Path, theirs: Path, merged: Path,
         out.prompt_path = path
         return out
     else:
-        if opts.backend == ailib.LMSTUDIO:
-            # A server-shaped backend is told where to look before it is
-            # asked whether it is there; the CLI ones discover themselves.
-            # The MODEL is not set here -- `invoke(model=...)` below is the
-            # single path for that, whichever backend it reaches.
-            ailib.set_endpoint(opts.endpoint)
-        if not ailib.check_available(opts.backend):
+        # One vocabulary for every backend: build it from the preset and the
+        # person's overrides, ask whether it is ready, ask the question
+        # through the cache. Which transport, which address, which model --
+        # none of that is this file's business; the backend's own identity
+        # goes into the cache key and the record.
+        from . import ailib
+        backend = ailib.build_backend(opts)
+        ready = backend.probe()
+        if not ready.ok:
             out.status = "backend-failed"
-            out.error = (f"backend {opts.backend!r} is not available "
-                         + (f"({ailib.local_describe()})" if opts.backend == ailib.LMSTUDIO
-                            else "(its CLI was not found)"))
+            out.error = f"backend {opts.backend!r} is not available ({ready.reason})"
             return out
-        if not opts.refresh:
-            hit = ailib.cache_read(key, opts.backend, opts.cache_dir)
-            if hit and hit.get("raw_response"):
-                answer = hit["raw_response"]
-                out.cached = True
-        if answer is None:
-            ok, text = ailib.invoke(opts.backend, prompt, verbose=opts.verbose,
-                                    timeout=opts.timeout, model=opts.model)
-            if not ok:
-                out.status = "backend-failed"
-                # A CLI's failure message is whatever IT chose to print, and
-                # that can be enormous: a codex version mismatch put 268 KB of
-                # its own model catalogue on the terminal here, twice, burying
-                # the one line that said what went wrong. Keep it all -- it is
-                # the only evidence there is -- but keep it in a file, and let
-                # the report show the head of it.
-                out.error = text
-                try:
-                    workdir.mkdir(parents=True, exist_ok=True)
-                    ep = workdir / "backend-error.txt"
-                    ep.write_text(text, encoding="utf-8")
-                    out.error_path = ep
-                except OSError:
-                    pass
-                return out
-            answer = text
-            ailib.cache_write(key, opts.backend,
-                              {"success": True, "raw_response": answer,
-                               "sections": {}, "error": None}, opts.cache_dir)
+        out.backend_identity = backend.identity
+        req = ailib.Request(prompt=prompt, schema=aiprompt.ANSWER_SCHEMA, timeout=opts.timeout,
+                            stream_to=sys.stdout if opts.verbose else None)
+        resp = ailib.run(backend, req, cache_dir=opts.cache_dir, fingerprint_extra=fingerprint,
+                         refresh=opts.refresh, tool=TOOL_NAME)
+        key = resp.key or key
+        out.cached, out.model_used, out.honoured = resp.cached, resp.model_used, resp.honoured
+        if not resp.ok:
+            out.status = "backend-failed"
+            # A CLI's failure message is whatever IT chose to print, and that
+            # can be enormous: a codex version mismatch put 268 KB of its own
+            # model catalogue on the terminal here, twice, burying the one
+            # line that said what went wrong. Keep it all -- it is the only
+            # evidence there is -- but keep it in a file, and let the report
+            # show the head of it.
+            out.error = resp.error
+            try:
+                workdir.mkdir(parents=True, exist_ok=True)
+                ep = workdir / "backend-error.txt"
+                ep.write_text(resp.error, encoding="utf-8")
+                out.error_path = ep
+            except OSError:
+                pass
+            return out
+        answer = resp.text
 
     # -- the check -------------------------------------------------------------
     data = _answer_data(answer)
@@ -201,7 +224,8 @@ def ai_step(*, label: str, ours: Path, base: Path, theirs: Path, merged: Path,
         if not failures:
             failures = aiprompt.check_proposal(parsed.hunks, choices, rules)
     common = dict(ours=o, theirs=t, base=b, base_kind=base_kind, backend=opts.backend,
-                  rules_path=str(rules.path or ""), rules_sha=rules.sha, fingerprint=key)
+                  rules_path=str(rules.path or ""), rules_sha=rules.sha, fingerprint=key,
+                  identity=out.backend_identity, model_used=out.model_used, honoured=out.honoured)
     record_path.parent.mkdir(parents=True, exist_ok=True)
     if failures:
         rec = airecord.new_record(proposal=b"", valid=False, failures=failures, **common)

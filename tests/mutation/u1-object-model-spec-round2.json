@@ -1,0 +1,14 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                   "tests/test_transport_openai.py", "tests/test_transport_cli.py",
+                   "tests/test_ailib_cache.py"],
+  "generation": "round 2 (2026-09-05): the six survivors of u1-object-model-spec.json, re-run after a killing test was written for each -- every one was triaged KILLABLE",
+  "mutations": [
+    {"id": "m1", "file": "dazzle_claude_config/_vendor/ailib/transports/openai.py", "original": "if not host:\n        return None", "mutated": "if not host:\n        return False", "note": "killing test: test_endpoint_is_on_prem_is_three_valued"},
+    {"id": "m2", "file": "dazzle_claude_config/_vendor/ailib/transports/openai.py", "original": "spec.on_prem if spec.on_prem is not None else endpoint_is_on_prem(spec.endpoint)", "mutated": "spec.on_prem or endpoint_is_on_prem(spec.endpoint)", "note": "killing test: the on_prem=False assertion in test_on_prem_is_derived_from_the_endpoint_when_the_preset_does_not_say"},
+    {"id": "m6", "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py", "original": "obj = json.loads(body.splitlines()[-1]) if body else None", "mutated": "obj = json.loads(body.splitlines()[0]) if body else None", "note": "killing test: test_a_chatty_cli_puts_its_envelope_on_the_LAST_line"},
+    {"id": "m8", "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py", "original": "exe.lower().endswith((\".cmd\", \".bat\"))", "mutated": "exe.endswith((\".cmd\", \".bat\"))", "note": "killing test: test_an_upper_case_cmd_shim_that_does_not_run_is_not_reported_ready (Windows)"},
+    {"id": "m10", "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py", "original": "if \"{schema_file}\" in tpl and req.schema is not None:", "mutated": "if \"{schema_file}\" in tpl:", "note": "killing test: test_no_schema_means_a_schema_file_placeholder_is_dropped_too"},
+    {"id": "m12", "file": "dazzle_claude_config/_vendor/ailib/cache.py", "original": "if not isinstance(resp, dict) or not resp.get(\"text\"):", "mutated": "if not isinstance(resp, dict) or \"text\" not in resp:", "note": "killing test: test_an_entry_with_empty_text_is_not_a_hit"}
+  ]
+}

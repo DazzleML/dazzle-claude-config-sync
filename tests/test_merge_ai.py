@@ -453,8 +453,18 @@ def test_the_config_key_picks_the_backend_when_ai_has_no_value(tmp_path, capsys,
     w = _world(tmp_path)
     (w["user"] / "ccs-config.json").write_text(json.dumps({"ai_merge_backend": "claude"}), encoding="utf-8")
     reply = "```json\n" + json.dumps(GOOD) + "\n```"
-    monkeypatch.setattr(aistep.ailib, "check_available", lambda name: True)
-    monkeypatch.setattr(aistep.ailib, "invoke", lambda name, prompt, **k: (True, reply))
+    # a fake TRANSPORT under the name the claude preset uses: the real preset,
+    # backend, cache and record run; only the subprocess is faked
+    from dazzle_claude_config._vendor.ailib import backend as _bm
+    from dazzle_claude_config._vendor.ailib.types import Readiness, Response
+
+    class _T:
+        def probe(self, spec): return Readiness(True, "fake")
+        def invoke(self, spec, req): return Response("answered", text=reply, model_used="fake")
+        def capabilities(self, spec): return frozenset({"model", "schema"})
+
+    _bm.transport_for("cli")
+    monkeypatch.setitem(_bm._TRANSPORTS, "cli", _T())
     rc = main(_ccs(w, "merge", "skills/s.md", "--ai", "--no-launch"))
     out = capsys.readouterr().out
     assert "(claude)" in out, out
@@ -482,3 +492,49 @@ def test_diff_ai_without_a_proposal_says_so(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "no AI proposal" in out and "--ai" in out
     assert rc == EXIT_CLEAN
+
+
+# -- #19, criteria 1 and 2: the counts come first, and the model sees only the hunks --
+
+def _one_sided_world(tmp_path):
+    """Twenty lines. Ours alone rewrote line 2; theirs alone rewrote line 18;
+    both rewrote line 10. diff3 resolves the two one-sided edits itself and
+    leaves exactly one hunk -- the model must see that hunk and nothing of
+    the other two, which sit well outside any context window."""
+    base = "".join(f"line {i}\n" for i in range(1, 21)).encode()
+    ours = base.replace(b"line 2\n", b"OURS ALONE changed two\n").replace(b"line 10\n", b"ten by ours\n")
+    theirs = base.replace(b"line 18\n", b"THEIRS ALONE changed eighteen\n").replace(b"line 10\n", b"ten by theirs\n")
+    return _world(tmp_path, history=(base, theirs), live=ours)
+
+
+def test_the_counts_come_first_and_one_sided_lines_never_reach_the_prompt(tmp_path, capsys):
+    w = _one_sided_world(tmp_path)
+    rc = main(_ccs(w, "merge", "skills/s.md", "--ai", "prompt-only", "--no-launch"))
+    out = capsys.readouterr().out
+    assert rc in (EXIT_CLEAN, EXIT_DRIFT), out
+    lines = out.splitlines()
+    head = next(i for i, l in enumerate(lines) if l.startswith("prompt written"))
+    # criterion 1: the classification counts, before anything else about the file
+    assert lines[head + 1].strip().startswith("hunks: 1 both sides changed"), lines[head + 1]
+    assert "19 lines git resolved on its own, never sent" in lines[head + 1], lines[head + 1]
+    # criterion 2: the two one-sided edits are in the merged result and NOT in the prompt
+    prompts = list((w["user"] / "ccs-merge-rules" / "_prompts").glob("*.md"))
+    assert len(prompts) == 1, prompts
+    prompt = prompts[0].read_text(encoding="utf-8")
+    assert "ten by ours" in prompt and "ten by theirs" in prompt
+    assert "OURS ALONE" not in prompt and "THEIRS ALONE" not in prompt, prompt
+
+
+def test_the_counts_come_first_on_a_staged_proposal_too(tmp_path, capsys):
+    w = _one_sided_world(tmp_path)
+    answer = {"hunks": [{"hunk": 1, "lines": ["T1"], "rules": [], "rationale": "a rewrite"}]}
+    rc = main(_ccs(w, "merge", "skills/s.md", "--ai", "--ai-response",
+                   str(_answer(tmp_path, answer)), "--no-launch"))
+    out = capsys.readouterr().out
+    assert rc in (EXIT_CLEAN, EXIT_DRIFT), out
+    lines = out.splitlines()
+    head = next(i for i, l in enumerate(lines) if l.startswith("staged"))
+    assert lines[head + 1].strip().startswith("hunks: 1 both sides changed"), lines[head + 1]
+    assert "rules:" in lines[head + 2] or "no rules" in lines[head + 2], lines[head + 2]
+    merged = w["merged"].read_bytes()
+    assert b"OURS ALONE" in merged and b"THEIRS ALONE" in merged and b"ten by theirs" in merged

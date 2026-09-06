@@ -16,8 +16,10 @@ pinned here instead:
              must say so in _VENDORED.md's "Changes since the copy", and a
              file authored here must be named there too. A fork of record is
              useful exactly as long as its record is true;
-  facade  -- every backend resolves to a module under ``_vendor``, and the
-             facade's own additions behave.
+The facade's own behaviour (presets, the object model, the transports) is
+tested in tests/test_ailib_presets.py, test_ailib_types.py,
+test_transport_*.py, test_ailib_cache.py and test_ailib_parsers.py; the
+compatibility wrapper for the origin's caller in test_analyze_shim.py.
 """
 from __future__ import annotations
 
@@ -35,24 +37,33 @@ VENDOR = PKG / "_vendor"
 AILIB = VENDOR / "ailib"
 RECORD = AILIB / "_VENDORED.md"
 
+#: The copied files that remain. The four copied backends (claude, codex,
+#: prompt_only and their __init__) were deleted on 2026-09-05 (U3 of the seam
+#: rebuild) once every measured fact they carried had a home in the
+#: transports; their origin fingerprints stay in _VENDORED.md's "Removed"
+#: table, dated, so the record keeps what was received.
 EXPECTED_FILES = {
     "__init__.py",
     "analyzer.py",
-    "backends/__init__.py",
-    "backends/claude.py",
-    "backends/codex.py",
-    "backends/prompt_only.py",
 }
 
-#: Authored HERE, inside the vendored tree: the shared library wants an
-#: HTTP-server backend, and holding it outside would have meant ccs owning a
-#: file every other consumer needs. It is bound by the purity rule exactly
-#: like the copies -- no ccs import, no ccs token, stdlib only -- which is
-#: what keeps it liftable. It has no origin fingerprint because it has no
-#: origin; the changes list is the only thing that records it exists, which
-#: is why a test below insists it is named there.
+#: Authored HERE, inside the vendored tree, and bound by the purity rule
+#: exactly like the copies -- no ccs import, no ccs token, stdlib only --
+#: which is what keeps them liftable. They have no origin fingerprint because
+#: they have no origin; the changes list is the only thing that records they
+#: exist, which is why a test below insists each is named there.
 AUTHORED_FILES = {
-    "backends/lmstudio.py",
+    # the object model of 2026-09-05 (U1 of the seam rebuild): a backend is a
+    # frozen Spec built into an object with probe()/invoke(Request); one
+    # transport per way of reaching a model; a cache helper; generic parsers
+    "types.py",
+    "backend.py",
+    "cache.py",
+    "parsers.py",
+    "transports/__init__.py",
+    "transports/cli.py",
+    "transports/openai.py",
+    "transports/prompt_file.py",
 }
 
 
@@ -170,152 +181,27 @@ def test_a_file_authored_here_is_declared_too():
 
 
 # -- the facade --------------------------------------------------------------
+#
+# The facade block that stood here (the registry rebinding, prompt-only via
+# invoke, parse_json_block, the os.chdir scratch-directory tests, the cache
+# re-exports, the kwargs forwarding) was retired on 2026-09-05 (U3 of the
+# seam rebuild). Every property moved rather than vanished: the registry to
+# tests/test_ailib_presets.py, prompt-only to test_transport_prompt_file.py,
+# the JSON reader to test_ailib_parsers.py, the cache round trip to
+# test_ailib_cache.py, the kwargs to Request, and the scratch-directory
+# tests to test_transport_cli.py -- where the property is the OPPOSITE of
+# the old one: cwd and environment are handed to the child and this process
+# is never touched, checked at the moment subprocess.run is called.
 
-def test_facade_registry_resolves_into_vendor():
-    from dazzle_claude_config import ailib
-    names = ailib.backend_names()
-    # lmstudio is in the registry like the rest: the tree it resolves into is
-    # what the vendoring contract is about, not who typed the file.
-    assert set(names) == {"claude", "codex", ailib.LMSTUDIO, ailib.PROMPT_ONLY}
-    for name in names:
-        mod = ailib.get_backend(name)
-        assert mod.__name__.startswith("dazzle_claude_config._vendor.ailib.backends."), mod.__name__
-        assert callable(mod.invoke) and callable(mod.is_available)
-    assert ailib.check_available(ailib.PROMPT_ONLY) is True
-    with pytest.raises(ValueError):
-        ailib.get_backend("no-such-backend")
-
-
-def test_prompt_only_writes_the_prompt_and_names_the_file(tmp_path):
-    from dazzle_claude_config import ailib
-    ailib.set_prompt_dir(tmp_path)
-    ok, message = ailib.invoke(ailib.PROMPT_ONLY, "hello there")
-    assert ok is False                       # the vendored contract: nothing was answered
-    written = list(tmp_path.glob("prompt_*.md"))
-    assert len(written) == 1
-    assert written[0].read_text(encoding="utf-8") == "hello there"
-    assert str(written[0]) in message
-
-
-def test_parse_json_block_takes_the_last_fence():
-    from dazzle_claude_config import ailib
-    text = ("Thinking...\n```json\n{\"draft\": 1}\n```\nRevised:\n"
-            "```json\n{\"hunks\": [{\"hunk\": 1, \"lines\": [\"O1\"]}]}\n```\nDone.")
-    assert ailib.parse_json_block(text) == {"hunks": [{"hunk": 1, "lines": ["O1"]}]}
-
-
-@pytest.mark.parametrize("text", ["no fences here", "```json\n{not json\n```", "", None])
-def test_parse_json_block_returns_none_when_absent_or_invalid(text):
-    from dazzle_claude_config import ailib
-    assert ailib.parse_json_block(text) is None
-
-
-def test_parse_json_block_reads_a_multi_line_body():
-    """Mutation survivor N1 (v0.5.21 sweep): without DOTALL a body that spans
-    lines -- the normal shape of a hunk answer -- never matched."""
-    from dazzle_claude_config import ailib
-    text = ("```json\n{\n  \"hunks\": [\n    {\"hunk\": 1, \"lines\": [\"O1\", \"T2\"]}\n  ]\n}\n```")
-    assert ailib.parse_json_block(text) == {"hunks": [{"hunk": 1, "lines": ["O1", "T2"]}]}
-
-
-def test_parse_json_block_ignores_fences_of_other_languages():
-    """Mutation survivor N2: a loosened fence pattern parsed any fenced block.
-    A ```python block that happens to hold a dict literal is not an answer."""
-    from dazzle_claude_config import ailib
-    assert ailib.parse_json_block("```python\n{\"hunks\": []}\n```") is None
-    assert ailib.parse_json_block("```\n{\"hunks\": []}\n```") is None
-    # ...and a json fence AFTER a python one is still found.
-    text = "```python\n{\"draft\": 1}\n```\n```json\n{\"final\": 1}\n```"
-    assert ailib.parse_json_block(text) == {"final": 1}
-
-
-def test_invoke_removes_the_scratch_directory_afterwards(monkeypatch):
-    """Mutation survivor N3: removing the scratch directory BEFORE changing
-    back out of it fails silently on Windows (a process cannot delete its own
-    working directory) and leaks one directory per call."""
-    from dazzle_claude_config import ailib
-    monkeypatch.setattr(ailib, "get_backend", lambda name: _FakeBackend)
-    _FakeBackend.seen.clear()
-    ailib.invoke("fake", "hi")
-    assert not Path(_FakeBackend.seen["cwd"]).exists()
-
-
-def test_cache_reexports_round_trip(tmp_path):
-    """Mutation survivors N7/N8: the re-exported cache functions and the TTL
-    constant must be the vendored ones, in the right roles."""
-    from dazzle_claude_config import ailib
-    key = ailib.cache_key({"base": "x"}, "claude", "ccs-merge")
-    assert ailib.cache_read(key, "claude", tmp_path) is None
-    ailib.cache_write(key, "claude", {"success": True, "raw_response": "r"}, tmp_path)
-    got = ailib.cache_read(key, "claude", tmp_path)
-    assert got is not None and got["raw_response"] == "r" and got["cached"] is True
-    assert isinstance(ailib.CACHE_TTL_SECONDS, int) and ailib.CACHE_TTL_SECONDS == 24 * 60 * 60
-
-
-class _FakeBackend:
-    seen: dict = {}
-
-    @staticmethod
-    def is_available():
-        return True
-
-    @staticmethod
-    def invoke(prompt, verbose=False, timeout=120):
-        _FakeBackend.seen["cwd"] = os.getcwd()
-        if prompt == "raise":
-            raise RuntimeError("boom")
-        return True, "ok"
-
-
-def test_invoke_runs_the_backend_in_a_neutral_directory(monkeypatch):
-    from dazzle_claude_config import ailib
-    monkeypatch.setattr(ailib, "get_backend", lambda name: _FakeBackend)
-    caller_cwd = os.getcwd()
-    _FakeBackend.seen.clear()
-    assert ailib.invoke("fake", "hi") == (True, "ok")
-    ran_in = Path(_FakeBackend.seen["cwd"]).resolve()
-    assert ran_in != Path(caller_cwd).resolve()
-    assert str(ran_in).startswith(str(Path(tempfile.gettempdir()).resolve()))
-    assert os.getcwd() == caller_cwd
-
-
-def test_invoke_restores_cwd_even_when_the_backend_raises(monkeypatch):
-    from dazzle_claude_config import ailib
-    monkeypatch.setattr(ailib, "get_backend", lambda name: _FakeBackend)
-    caller_cwd = os.getcwd()
-    with pytest.raises(RuntimeError):
-        ailib.invoke("fake", "raise")
-    assert os.getcwd() == caller_cwd
-
-
-class _KwargsBackend:
-    seen: dict = {}
-
-    @staticmethod
-    def is_available():
-        return True
-
-    @staticmethod
-    def invoke(prompt, verbose=False, timeout=120):
-        _KwargsBackend.seen.update(prompt=prompt, verbose=verbose, timeout=timeout)
-        return True, "ok"
-
-
-def test_invoke_forwards_verbose_and_timeout_by_name(monkeypatch):
-    """Mutation survivor M8 (v0.5.21 sweep): the two keyword arguments were
-    swapped on the way to the backend and nothing noticed, because the fake
-    backends above ignore them. A streaming flag handed to `timeout` and a
-    timeout handed to `verbose` would fail on the real CLI backends only."""
-    from dazzle_claude_config import ailib
-    monkeypatch.setattr(ailib, "get_backend", lambda name: _KwargsBackend)
-    _KwargsBackend.seen.clear()
-    ailib.invoke("fake", "the prompt", verbose=True, timeout=7)
-    assert _KwargsBackend.seen == {"prompt": "the prompt", "verbose": True, "timeout": 7}
-
-
-def test_invoke_honours_an_explicit_cwd(monkeypatch, tmp_path):
-    from dazzle_claude_config import ailib
-    monkeypatch.setattr(ailib, "get_backend", lambda name: _FakeBackend)
-    _FakeBackend.seen.clear()
-    ailib.invoke("fake", "hi", cwd=tmp_path)
-    assert Path(_FakeBackend.seen["cwd"]).resolve() == tmp_path.resolve()
+def test_the_facade_is_the_only_module_that_imports_the_vendored_tree():
+    """The purity test says nothing under _vendor/ knows ccs; this is the
+    other direction: nothing in ccs reaches into _vendor/ except ailib.py,
+    so lifting the tree out later touches exactly one import site."""
+    offenders = []
+    for p in PKG.rglob("*.py"):
+        if "_vendor" in p.parts or p.name == "ailib.py":
+            continue
+        for n, line in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if "_vendor" in line and ("import" in line):
+                offenders.append(f"{p.relative_to(PKG)}:{n}: {line.strip()}")
+    assert not offenders, "\n".join(offenders)

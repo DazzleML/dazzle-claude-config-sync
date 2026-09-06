@@ -32,6 +32,7 @@ You do not need this page to answer a question about one setting -- `--explain <
 | [`ai_merge_backend`](#ai_merge_backend) | `"prompt-only"` | `CCS_AI_MERGE_BACKEND` |
 | [`ai_merge_endpoint`](#ai_merge_endpoint) | `null` | `CCS_AI_MERGE_ENDPOINT` |
 | [`ai_merge_model`](#ai_merge_model) | `null` | `CCS_AI_MERGE_MODEL` |
+| [`ai_merge_api_key_env`](#ai_merge_api_key_env) | `null` | `CCS_AI_MERGE_API_KEY_ENV` |
 | [`interactive`](#interactive) | `true` | `CCS_INTERACTIVE` |
 | [`status_detail`](#status_detail) | `"auto"` | `CCS_STATUS_DETAIL` |
 | [`status_max_lines`](#status_max_lines) | `30` | `CCS_STATUS_MAX_LINES` |
@@ -63,21 +64,27 @@ No longer read. It was documented since 0.3.0 as a shell command receiving $CCS_
 
 ### ai_merge_backend
 
-**Default:** `"prompt-only"` &middot; **Environment:** `CCS_AI_MERGE_BACKEND` &middot; **One of:** `claude`, `codex`, `lmstudio`, `prompt-only`
+**Default:** `"prompt-only"` &middot; **Environment:** `CCS_AI_MERGE_BACKEND` &middot; **One of:** `claude`, `claude-strict`, `codex`, `codex-strict`, `lmstudio`, `ollama`, `openai`, `openrouter`, `prompt-only`
 
-Which backend `ccs merge --ai` asks when the flag names none: claude (the Claude Code CLI), codex (the Codex CLI), or prompt-only, which writes the prompt to ~/claude/ccs-merge-rules/_prompts/ for you to carry to any model and answers nothing. prompt-only is the default on purpose: it costs nothing and sends nothing anywhere. Whichever answers, the proposal lands beside your file as <file>.merged-ai and nothing installs without --accept.
+Which backend `ccs merge --ai` asks when the flag names none. The CLIs: claude (the Claude Code CLI) and codex (the Codex CLI), each with a -strict variant that asks for the answer's schema on the command line. The servers: lmstudio and ollama on this machine, openai and openrouter over the wire -- the same code with a different address and, for the hosted two, a key named by ai_merge_api_key_env or the preset's default (OPENAI_API_KEY, OPENROUTER_API_KEY). And prompt-only, which writes the prompt to ~/claude/ccs-merge-rules/_prompts/ for you to carry to any model and answers nothing. prompt-only is the default on purpose: it costs nothing and sends nothing anywhere. Whichever answers, the proposal lands beside your file as <file>.merged-ai and nothing installs without --accept.
 
 ### ai_merge_endpoint
 
 **Default:** `null` &middot; **Environment:** `CCS_AI_MERGE_ENDPOINT`
 
-Where the lmstudio backend sends its request: an OpenAI-compatible endpoint, ending in /v1. Unset means http://127.0.0.1:1234/v1, LM Studio on this machine. The IPv4 literal is deliberate -- LM Studio binds IPv4-only on Windows, and localhost can resolve to ::1 first and time out. A LAN address (http://192.168.1.5:1234/v1) is equally private in the sense that matters: your configuration text stays on your network.
+Where a server backend (lmstudio, ollama, openai, openrouter) sends its request, overriding the preset's own address: an OpenAI-compatible endpoint, ending in /v1. Unset means the preset's address -- for lmstudio, http://127.0.0.1:1234/v1, LM Studio on this machine. The IPv4 literal is deliberate -- LM Studio binds IPv4-only on Windows, and localhost can resolve to ::1 first and time out. A LAN address (http://192.168.1.5:1234/v1) is equally private in the sense that matters: your configuration text stays on your network.
 
 ### ai_merge_model
 
 **Default:** `null` &middot; **Environment:** `CCS_AI_MERGE_MODEL`
 
-Which model the AI merge asks for. Honoured by lmstudio (checked against the server before anything is sent, because naming a model it has not loaded makes it load one from disk) and by claude (through ANTHROPIC_MODEL). Not yet honoured by codex, which takes its model on the command line and has no way to be told one from here -- `ccs doctor` says so rather than letting the setting quietly do nothing. Unset means whatever the backend would choose on its own; for lmstudio that is whatever is loaded, which is right when you run one model at a time.
+Which model the AI merge asks for. Every backend honours it in its own way: the CLIs on their command line (claude --model, codex -m), the servers in the request itself -- and lmstudio checks the id against the server before anything is sent, because naming a model it has not loaded makes it load one from disk. The report says which model actually answered. Unset means the preset's own default: the claude presets ask for claude-opus-5 (a merge should not silently inherit whatever the CLI's session defaults to); codex leaves it to its CLI; the servers use whatever is loaded, which is right when you run one model at a time.
+
+### ai_merge_api_key_env
+
+**Default:** `null` &middot; **Environment:** `CCS_AI_MERGE_API_KEY_ENV`
+
+The NAME of the environment variable holding the key a hosted backend needs -- never the key itself, which stays out of this file, out of the cache and out of every record. Unset means the preset's own default: OPENAI_API_KEY for openai, OPENROUTER_API_KEY for openrouter; the local servers need none. `ccs doctor` says which variable it looked for when it is not set.
 
 ### interactive
 

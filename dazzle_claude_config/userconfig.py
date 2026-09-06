@@ -130,17 +130,21 @@ KEYS: dict[str, Key] = _attach_explanations({
 
     "ai_merge_command": Key(default=None, env="CCS_AI_MERGE_COMMAND"),
 
-    # The choices are stated here rather than imported from `ailib.backend_names()`
+    # The choices are stated here rather than imported from `ailib.names()`
     # ON PURPOSE: a config file must be readable and checkable without importing
     # the AI machinery. The cost is that the two can drift, so `ccs doctor`
-    # compares them and says so -- see its "ai merge" lines.
+    # compares them and says so -- see its "ai merge" lines -- and so does
+    # tests/test_ailib_presets.py.
     "ai_merge_backend": Key(
         default="prompt-only", env="CCS_AI_MERGE_BACKEND",
-        choices=frozenset({"claude", "codex", "lmstudio", "prompt-only"})),
+        choices=frozenset({"prompt-only", "claude", "claude-strict", "codex", "codex-strict",
+                           "lmstudio", "ollama", "openai", "openrouter"})),
 
     "ai_merge_endpoint": Key(default=None, env="CCS_AI_MERGE_ENDPOINT"),
 
     "ai_merge_model": Key(default=None, env="CCS_AI_MERGE_MODEL"),
+
+    "ai_merge_api_key_env": Key(default=None, env="CCS_AI_MERGE_API_KEY_ENV"),
 
     "interactive": Key(default=True, env="CCS_INTERACTIVE"),
 
