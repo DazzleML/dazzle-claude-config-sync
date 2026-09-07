@@ -173,7 +173,7 @@ def test_a_schema_1_record_loads_as_schema_2_with_one_answer(tmp_path):
 def test_new_record_puts_what_the_backend_reported_into_the_chosen_answer():
     r = airecord.new_record(proposal=b"p", ours=b"o", theirs=b"t", base=b"b", base_kind="inferred",
                             backend="openrouter", rules_path="", rules_sha="", fingerprint="k" * 16,
-                            valid=True, failures=[], identity="openai|https://openrouter.ai/api/v1|m||key:OPENROUTER_API_KEY",
+                            valid=True, failures=[], identity="openai_compat|https://openrouter.ai/api/v1|m||key:OPENROUTER_API_KEY",
                             model_used="qwen/qwen3", honoured=("schema", "model"))
     a = r.answer
     assert a["backend"] == "openrouter" and a["model_used"] == "qwen/qwen3"

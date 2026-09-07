@@ -12,7 +12,7 @@ library unchanged.
 What lives HERE, and only here, is what is genuinely this tool's:
 
   * the **presets** -- the named backends a person types after `--ai`, as
-    DATA over the library's transports. The library knows `cli`, `openai`
+    DATA over the library's transports. The library knows `cli`, `openai_compat`
     and `prompt-file`; this file knows that `lmstudio` means the OpenAI
     transport at 127.0.0.1:1234 with reasoning turned off and a hint about
     the Developer tab, that `openrouter` is the same transport at
@@ -80,13 +80,13 @@ PRESETS: dict[str, _Spec] = {
                           command=("codex", "exec", "--skip-git-repo-check", "-m", "{model}",
                                    "--output-schema", "{schema_file}", "-o", "{output_file}", "-"),
                           answer="file:{output_file}", candidates=_CODEX_CANDIDATES, on_prem=False),
-    "lmstudio": _Spec("openai", name="lmstudio", endpoint="http://127.0.0.1:1234/v1",
+    "lmstudio": _Spec("openai_compat", name="lmstudio", endpoint="http://127.0.0.1:1234/v1",
                       extra=(("reasoning_effort", "none"),),
                       hint="in LM Studio: the Developer tab"),
-    "ollama": _Spec("openai", name="ollama", endpoint="http://127.0.0.1:11434/v1"),
-    "openai": _Spec("openai", name="openai", endpoint="https://api.openai.com/v1",
+    "ollama": _Spec("openai_compat", name="ollama", endpoint="http://127.0.0.1:11434/v1"),
+    "openai": _Spec("openai_compat", name="openai", endpoint="https://api.openai.com/v1",
                     credential_env="OPENAI_API_KEY"),
-    "openrouter": _Spec("openai", name="openrouter", endpoint="https://openrouter.ai/api/v1",
+    "openrouter": _Spec("openai_compat", name="openrouter", endpoint="https://openrouter.ai/api/v1",
                         credential_env="OPENROUTER_API_KEY"),
 }
 

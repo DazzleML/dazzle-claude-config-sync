@@ -21,7 +21,7 @@ from dazzle_claude_config._vendor.ailib.types import Readiness, Request, Respons
 # -- Spec --------------------------------------------------------------------------
 
 def test_a_spec_is_frozen_and_replaceable():
-    s = Spec("openai", name="lmstudio", endpoint="http://127.0.0.1:1234/v1")
+    s = Spec("openai_compat", name="lmstudio", endpoint="http://127.0.0.1:1234/v1")
     with pytest.raises(dataclasses.FrozenInstanceError):
         s.model = "x"                                   # type: ignore[misc]
     t = s.with_(model="qwen")
@@ -30,7 +30,7 @@ def test_a_spec_is_frozen_and_replaceable():
 
 def test_identity_names_what_you_asked_and_never_the_secret(monkeypatch):
     monkeypatch.setenv("SOME_KEY", "hunter2-the-secret")
-    s = Spec("openai", endpoint="https://openrouter.ai/api/v1", model="m",
+    s = Spec("openai_compat", endpoint="https://openrouter.ai/api/v1", model="m",
              credential_env="SOME_KEY")
     ident = s.identity()
     assert "hunter2" not in ident and "hunter2" not in repr(s)
@@ -40,7 +40,7 @@ def test_identity_names_what_you_asked_and_never_the_secret(monkeypatch):
 
 
 def test_identity_changes_with_the_things_that_change_the_answer():
-    base = Spec("openai", endpoint="http://h/v1", model="a")
+    base = Spec("openai_compat", endpoint="http://h/v1", model="a")
     assert base.identity() != base.with_(model="b").identity()
     assert base.identity() != base.with_(endpoint="http://other/v1").identity()
     assert base.identity() != base.with_(extra=(("reasoning_effort", "none"),)).identity()
@@ -67,8 +67,8 @@ def test_identity_of_a_cli_spec_is_the_template_not_the_substitution():
 
 
 def test_extra_is_ordered_in_the_identity():
-    a = Spec("openai", extra=(("x", 1), ("y", 2)))
-    b = Spec("openai", extra=(("y", 2), ("x", 1)))
+    a = Spec("openai_compat", extra=(("x", 1), ("y", 2)))
+    b = Spec("openai_compat", extra=(("y", 2), ("x", 1)))
     assert a.identity() == b.identity()
 
 

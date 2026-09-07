@@ -38,7 +38,7 @@ ON_PREM = "data_stays_on_prem"    # the prompt does not leave the user's own net
 class Spec:
     """Everything needed to BUILD a backend. Immutable.
 
-    transport      -- "cli", "openai", "prompt-file", ... (the registry's names)
+    transport      -- "cli", "openai_compat", "prompt-file", ... (the registry's names)
     name           -- a human label for the preset; not part of the identity
     endpoint       -- HTTP transports: the base URL, ending in /v1 for the
                       OpenAI-compatible surface; the prompt-file transport: the

@@ -28,7 +28,7 @@ class Transport(Protocol):
 
 
 _TRANSPORTS: dict[str, Transport] = {}
-_BUILTIN = ("cli", "openai", "prompt-file")
+_BUILTIN = ("cli", "openai_compat", "prompt-file")
 
 
 def register_transport(name: str, transport: Transport | None) -> None:
@@ -42,9 +42,14 @@ def register_transport(name: str, transport: Transport | None) -> None:
 def _ensure_builtins() -> None:
     if all(n in _TRANSPORTS for n in _BUILTIN):
         return
-    from .transports import cli, openai, prompt_file
+    from .transports import cli, openai_compat, prompt_file
     _TRANSPORTS.setdefault("cli", cli.SubprocessCli())
-    _TRANSPORTS.setdefault("openai", openai.OpenAICompatible())
+    # "openai_compat": the OpenAI-compatible wire format every local and
+    # hosted server speaks (LM Studio, Ollama, OpenRouter, OpenAI itself).
+    # Named for the protocol, not the company, so a preset called "openai"
+    # (the hosted API) is one of several riding it and never read as the
+    # transport itself.
+    _TRANSPORTS.setdefault("openai_compat", openai_compat.OpenAICompatible())
     _TRANSPORTS.setdefault("prompt-file", prompt_file.PromptFile())
 
 

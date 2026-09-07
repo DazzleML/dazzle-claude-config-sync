@@ -4,6 +4,9 @@ All notable changes to dazzle-claude-config (ccs) are documented here. Format fo
 
 ## [Unreleased]
 
+### Changed
+- **The OpenAI-compatible transport is named for the protocol, not the company.** Inside the AI library the transport that LM Studio, Ollama, OpenRouter and OpenAI's own API all ride was called `openai`, the same word as the `openai` preset (the hosted API), which read as if one preset were the transport. It is now `openai_compat`, the term every such server uses for itself. The preset names are unchanged. The transport's name is the first field of the identity a cached answer is keyed on, so answers cached before this change are recomputed once (the cache's day-long life would have done the same by tomorrow).
+
 ## [0.6.0] - 2026-09-05
 
 ### Added

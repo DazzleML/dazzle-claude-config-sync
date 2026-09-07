@@ -62,7 +62,7 @@ AUTHORED_FILES = {
     "parsers.py",
     "transports/__init__.py",
     "transports/cli.py",
-    "transports/openai.py",
+    "transports/openai_compat.py",
     "transports/prompt_file.py",
 }
 

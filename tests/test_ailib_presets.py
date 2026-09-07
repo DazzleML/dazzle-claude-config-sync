@@ -82,9 +82,9 @@ def test_codex_is_exec_on_stdin_with_a_model_flag():
     assert s.on_prem is False and s.candidates                # the npm / WinGet shims
 
 
-def test_lmstudio_is_the_openai_transport_on_loopback_with_reasoning_off():
+def test_lmstudio_is_the_openai_compat_transport_on_loopback_with_reasoning_off():
     s = ailib.spec_for("lmstudio")
-    assert s.transport == "openai" and s.endpoint == "http://127.0.0.1:1234/v1"
+    assert s.transport == "openai_compat" and s.endpoint == "http://127.0.0.1:1234/v1"
     assert "localhost" not in s.endpoint                      # IPv4 literal on purpose
     assert dict(s.extra)["reasoning_effort"] == "none"
     assert "Developer tab" in s.hint
@@ -94,7 +94,7 @@ def test_lmstudio_is_the_openai_transport_on_loopback_with_reasoning_off():
 
 def test_openrouter_is_the_same_transport_over_the_wire_with_a_named_key(monkeypatch):
     s = ailib.spec_for("openrouter")
-    assert s.transport == "openai" and s.endpoint == "https://openrouter.ai/api/v1"
+    assert s.transport == "openai_compat" and s.endpoint == "https://openrouter.ai/api/v1"
     assert s.credential_env == "OPENROUTER_API_KEY"
     assert "data_stays_on_prem" not in build(s).capabilities
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)

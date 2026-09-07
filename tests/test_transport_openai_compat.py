@@ -134,7 +134,7 @@ def server():
 def _spec(url, model="", **kw):
     """The lmstudio preset's shape, without being the preset: the transport
     is told the endpoint, and `reasoning_effort` rides in `extra`."""
-    return Spec("openai", name="local", endpoint=url, model=model,
+    return Spec("openai_compat", name="local", endpoint=url, model=model,
                 extra=(("reasoning_effort", "none"),), **kw)
 
 
@@ -260,7 +260,7 @@ def test_an_oversized_context_window_is_a_warning_not_a_refusal(server):
 
 
 def test_the_window_warning_is_about_exceeding_the_threshold_not_meeting_it(server):
-    from dazzle_claude_config._vendor.ailib.transports import openai as t
+    from dazzle_claude_config._vendor.ailib.transports import openai_compat as t
     _Fake.context = t.ROOMY_CONTEXT
     assert build(_spec(server.url)).probe().warning == ""
     _Fake.context = t.ROOMY_CONTEXT + 1
@@ -321,7 +321,7 @@ def test_a_keyed_remote_is_reached_with_a_bearer_and_the_secret_never_leaks(serv
     _Fake.token = "s3cr3t-value"
     _Fake.native = False                               # a hosted provider has no load state
     monkeypatch.setenv("POC_KEY", "s3cr3t-value")
-    spec = Spec("openai", name="remote", endpoint=server.url, model="qwen/qwen3.8-35b",
+    spec = Spec("openai_compat", name="remote", endpoint=server.url, model="qwen/qwen3.8-35b",
                 credential_env="POC_KEY")
     b = build(spec)
     assert b.probe().ok is True
@@ -335,7 +335,7 @@ def test_a_keyed_remote_is_reached_with_a_bearer_and_the_secret_never_leaks(serv
 def test_a_keyed_remote_without_the_key_in_the_environment_probes_to_a_sentence(server, monkeypatch):
     _Fake.token = "s3cr3t-value"
     monkeypatch.delenv("POC_KEY", raising=False)
-    ready = build(Spec("openai", endpoint=server.url, credential_env="POC_KEY")).probe()
+    ready = build(Spec("openai_compat", endpoint=server.url, credential_env="POC_KEY")).probe()
     assert ready.ok is False
     assert "POC_KEY" in ready.reason and "not set" in ready.reason
 
@@ -347,29 +347,29 @@ def test_the_same_transport_serves_local_and_remote_with_different_specs(server,
     assert local.probe().ok
     _Fake.token = "k"
     monkeypatch.setenv("K", "k")
-    remote = build(Spec("openai", endpoint=server.url, model="qwen/qwen3.8-35b", credential_env="K"))
+    remote = build(Spec("openai_compat", endpoint=server.url, model="qwen/qwen3.8-35b", credential_env="K"))
     assert remote.probe().ok
     assert type(local._transport) is type(remote._transport)
 
 
 def test_on_prem_is_derived_from_the_endpoint_when_the_preset_does_not_say(server):
     assert "data_stays_on_prem" in build(_spec(server.url)).capabilities          # 127.0.0.1
-    hosted = build(Spec("openai", endpoint="https://openrouter.ai/api/v1", credential_env="X"))
+    hosted = build(Spec("openai_compat", endpoint="https://openrouter.ai/api/v1", credential_env="X"))
     assert "data_stays_on_prem" not in hosted.capabilities
-    lan = build(Spec("openai", endpoint="http://192.168.1.5:1234/v1"))
+    lan = build(Spec("openai_compat", endpoint="http://192.168.1.5:1234/v1"))
     assert "data_stays_on_prem" in lan.capabilities
-    said = build(Spec("openai", endpoint="https://example.com/v1", on_prem=True))
+    said = build(Spec("openai_compat", endpoint="https://example.com/v1", on_prem=True))
     assert "data_stays_on_prem" in said.capabilities                                # the preset's word wins
     # ...in BOTH directions: a loopback endpoint the preset declares off-prem
     # (a tunnel to somewhere else, say) must not be promoted by the heuristic.
     # Sweep survivor m2 (2026-09-05): `on_prem or derived` would have.
-    denied = build(Spec("openai", endpoint=server.url, on_prem=False))
+    denied = build(Spec("openai_compat", endpoint=server.url, on_prem=False))
     assert "data_stays_on_prem" not in denied.capabilities
 
 
 def test_endpoint_is_on_prem_is_three_valued():
     """Sweep survivor m1: no host at all is "cannot say", not "off-prem"."""
-    from dazzle_claude_config._vendor.ailib.transports.openai import endpoint_is_on_prem
+    from dazzle_claude_config._vendor.ailib.transports.openai_compat import endpoint_is_on_prem
     assert endpoint_is_on_prem("") is None
     assert endpoint_is_on_prem("not a url") is None
     assert endpoint_is_on_prem("http://127.0.0.1:1234/v1") is True
@@ -393,6 +393,6 @@ def test_two_backends_stay_independent_across_alternating_probes_and_an_invoke(s
     assert [x.probe().ok, y.probe().ok] == [True, False]
 
 
-def test_capabilities_of_the_openai_transport(server):
+def test_capabilities_of_the_openai_compat_transport(server):
     caps = build(_spec(server.url, model="m")).capabilities
     assert {"schema", "model"} <= caps and "stream" not in caps
