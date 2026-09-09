@@ -32,6 +32,7 @@ SCHEMA = "schema"                 # the answer's shape is enforced, not just req
 MODEL = "model"                   # the backend can be told which model to use
 STREAM = "stream"                 # output can be echoed as it arrives
 ON_PREM = "data_stays_on_prem"    # the prompt does not leave the user's own network
+TOOLS = "tools"                   # given a working directory, the backend may read and write in it
 
 
 def _basename(path: str) -> str:
@@ -62,8 +63,15 @@ class Spec:
     command        -- CLI transports: the argv template. Placeholders:
                       {model}, {schema} (the schema inline, one argv token),
                       {schema_file}, {prompt_file}, {output_file} (paths in the
-                      child's scratch directory), {cwd}. An empty placeholder
+                      child's scratch directory), {cwd} (the child's working
+                      directory), {tools} (see `tools`). An empty placeholder
                       removes itself and the flag before it.
+    tools          -- CLI transports: what `{tools}` becomes when the Request
+                      names a working directory -- the CLI's own grant of what
+                      it may touch there (claude's `--allowedTools` list,
+                      codex's sandbox mode). Without a workdir the placeholder
+                      and its flag vanish, so a call that names none is argv-
+                      identical to a preset without a grant
     answer         -- CLI transports: where the answer is. "stdout" (default),
                       "stdout-json:<key>" (stdout is a JSON envelope; take one
                       key), or "file:{output_file}"
@@ -84,6 +92,7 @@ class Spec:
     credential_file: str = ""
     credential_fallbacks: tuple[str, ...] = ()
     command: tuple[str, ...] = ()
+    tools: str = ""
     answer: str = "stdout"
     env_unset: tuple[str, ...] = ()
     candidates: tuple[str, ...] = ()
@@ -120,7 +129,12 @@ class Request:
     max_tokens=None and temperature=None mean "not sent": a low ceiling is
     exactly how a reasoning model comes back with empty content. `stream_to`
     is a text sink a transport echoes output into as it arrives; it is not
-    part of the fingerprint, and neither is the timeout.
+    part of the fingerprint, and neither is the timeout. `workdir` is a
+    directory the caller prepared for the backend to work IN -- a CLI runs
+    there, may read and write there under the spec's `tools` grant, and the
+    directory is left for the caller to read back; "" means the transport's
+    own throwaway scratch. Where the child ran is not what was asked, so
+    the fingerprint excludes it too.
     """
     prompt: str
     schema: dict | None = None
@@ -128,6 +142,7 @@ class Request:
     timeout: int = 120
     temperature: float | None = 0
     stream_to: TextIO | None = None
+    workdir: str = ""
 
     def fingerprint(self) -> str:
         payload = json.dumps({"prompt": self.prompt, "schema": self.schema,

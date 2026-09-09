@@ -50,6 +50,9 @@ report = {
     "schema_file": (os.path.isfile(opt("--output-schema")) if opt("--output-schema") else None),
     "argv": args,
 }
+if opt("--touch"):
+    open(opt("--touch"), "w", encoding="utf-8").write("touched")     # relative to the child's cwd
+report["allowed_tools"] = opt("--allowedTools")
 out = opt("-o")
 if out:
     open(out, "w", encoding="utf-8").write(json.dumps(report)); print("wrote the answer to a file")
@@ -223,6 +226,89 @@ def test_our_cwd_and_environ_are_untouched_DURING_the_call(cli, monkeypatch):
     before_cwd, before_env = os.getcwd(), dict(os.environ)
     build(_spec(cli)).invoke(Request(prompt="p", timeout=20))
     assert seen["cwd"] == before_cwd and seen["env"] == before_env
+
+
+# -- a populated working directory, and the tools grant (U3 of #64, 2026-09-09) ------
+#
+# The deep merge runs a CLI INSIDE a sandbox copy it prepared, so the
+# request may name a working directory: the child runs there, may write
+# there, and the directory is the caller's to keep and read back -- the
+# transport does not remove it. Only then does the `{tools}` placeholder
+# take the preset's grant; without a workdir it vanishes with its flag, so
+# pass 1's argv is byte-identical to before.
+
+def test_a_workdir_on_the_request_is_the_childs_cwd_and_survives_the_call(cli, tmp_path):
+    work = tmp_path / "sandbox"
+    work.mkdir()
+    r = build(_spec(cli, "--touch", "made-here.txt")).invoke(Request(prompt="p", timeout=20, workdir=str(work)))
+    assert r.ok, r.error
+    assert Path(_report(r)["cwd"]).resolve() == work.resolve()     # the child ran THERE
+    assert (work / "made-here.txt").read_text(encoding="utf-8") == "touched"   # and what it wrote is kept
+    assert work.is_dir()                                            # the directory is the caller's
+
+
+def test_without_a_workdir_the_tools_placeholder_and_its_flag_vanish(cli):
+    """Pass 1's argv must not change: a preset that carries a grant sends
+    nothing of it when the request names no working directory."""
+    r = build(_spec(cli, "--allowedTools", "{tools}", "--marker", tools="Read,Grep,Edit,Write")).invoke(
+        Request(prompt="p", timeout=20))
+    argv = _report(r)["argv"]
+    assert "--allowedTools" not in argv and "{tools}" not in argv and "--marker" in argv
+    assert "tools" not in r.honoured
+    assert _report(r)["allowed_tools"] is None
+
+
+def test_with_a_workdir_the_grant_is_substituted_and_honoured(cli, tmp_path):
+    work = tmp_path / "sandbox"
+    work.mkdir()
+    r = build(_spec(cli, "--allowedTools", "{tools}", tools="Read,Grep,Edit,Write")).invoke(
+        Request(prompt="p", timeout=20, workdir=str(work)))
+    assert _report(r)["allowed_tools"] == "Read,Grep,Edit,Write"
+    assert "tools" in r.honoured
+
+
+def test_a_workdir_with_an_empty_grant_sends_no_flag_and_honours_nothing(cli, tmp_path):
+    work = tmp_path / "sandbox"
+    work.mkdir()
+    r = build(_spec(cli, "--allowedTools", "{tools}")).invoke(Request(prompt="p", timeout=20, workdir=str(work)))
+    assert _report(r)["allowed_tools"] is None and "tools" not in r.honoured
+
+
+def test_the_scratch_files_are_still_made_when_the_child_runs_in_a_workdir(cli, tmp_path):
+    """A schema file belongs to the call, not to the sandbox: it is written
+    in the transport's own scratch (removed afterwards), while the child
+    runs in the workdir and `{cwd}` names the workdir."""
+    work = tmp_path / "sandbox"
+    work.mkdir()
+    r = build(_spec(cli, "--output-schema", "{schema_file}", "--marker", "{cwd}")).invoke(
+        Request(prompt="p", schema=SCHEMA, timeout=20, workdir=str(work)))
+    rep = _report(r)
+    assert rep["schema_file"] is True and "schema" in r.honoured
+    assert Path(rep["cwd"]).resolve() == work.resolve()
+    assert Path(rep["argv"][rep["argv"].index("--marker") + 1]).resolve() == work.resolve()
+    assert not list(work.iterdir())                                 # nothing of the transport's landed in the sandbox
+
+
+def test_the_streaming_path_runs_the_child_in_the_workdir_too(cli, tmp_path):
+    """v0.6.3 sweep, survivor cli-8: the streaming branch handed `_stream`
+    the scratch instead of the workdir and nothing noticed, because every
+    workdir test ran the non-streaming branch. `--ai-verbose` on a deep
+    run must not quietly move the child out of the sandbox."""
+    work = tmp_path / "sandbox"
+    work.mkdir()
+    sink = io.StringIO()
+    r = build(_spec(cli, "--touch", "streamed.txt")).invoke(
+        Request(prompt="p", timeout=20, workdir=str(work), stream_to=sink))
+    assert r.ok, r.error
+    assert "stream" in r.honoured
+    assert Path(json.loads(r.text.strip().splitlines()[-1])["cwd"]).resolve() == work.resolve()
+    assert (work / "streamed.txt").is_file()
+
+
+def test_capabilities_say_tools_only_with_both_the_placeholder_and_a_grant(cli):
+    assert "tools" in build(_spec(cli, "--allowedTools", "{tools}", tools="Read,Grep")).capabilities
+    assert "tools" not in build(_spec(cli, "--allowedTools", "{tools}")).capabilities       # no grant
+    assert "tools" not in build(_spec(cli, tools="Read,Grep")).capabilities                  # no placeholder
 
 
 # -- failures with a sentence ---------------------------------------------------------

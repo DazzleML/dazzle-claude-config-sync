@@ -100,6 +100,22 @@ def test_a_request_fingerprint_excludes_the_stream_and_the_timeout():
     assert a.fingerprint() != Request(prompt="q", schema={"type": "object"}).fingerprint()
     assert a.fingerprint() != Request(prompt="p").fingerprint()
     assert a.fingerprint() != Request(prompt="p", schema={"type": "object"}, max_tokens=5).fingerprint()
+    # v0.6.3 sweep, survivor types-5: the temperature is part of what was
+    # asked -- a colder and a warmer run must not share a cached answer
+    assert a.fingerprint() != Request(prompt="p", schema={"type": "object"}, temperature=0.7).fingerprint()
+
+
+def test_a_request_fingerprint_excludes_the_workdir_and_a_spec_may_carry_a_grant():
+    """U3 of #64: where the child runs is not what was asked; a cached
+    answer must not split by sandbox path. The grant is the spec's."""
+    a = Request(prompt="p", schema={"type": "object"})
+    b = Request(prompt="p", schema={"type": "object"}, workdir="C:/somewhere/else")
+    assert a.fingerprint() == b.fingerprint()
+    assert Request(prompt="p").workdir == ""
+    s = Spec("cli", command=("claude", "--allowedTools", "{tools}", "-p", "-"), tools="Read,Grep,Edit,Write")
+    assert s.tools == "Read,Grep,Edit,Write" and Spec("cli").tools == ""
+    from dazzle_claude_config._vendor.ailib import types as t
+    assert t.TOOLS == "tools"
 
 
 def test_request_defaults_send_nothing_they_do_not_have_to():

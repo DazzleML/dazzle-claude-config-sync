@@ -9,6 +9,17 @@ THE CHILD (a fresh scratch directory, a copied environment with the
 preset's `env_unset` removed) and never set on this process. A caller that
 runs two backends, or lives longer than one call, sees no shared state.
 
+**A populated working directory** (2026-09-09): when the Request names a
+`workdir`, the child runs THERE instead of in the throwaway scratch, may
+read and write there under the preset's `tools` grant (substituted into
+the `{tools}` placeholder only then -- claude's `--allowedTools` list,
+codex's `-s` sandbox mode), and the directory is left exactly as the child
+left it for the caller to read back. The scratch is still made for the
+call's own files (a schema, a prompt) and still removed. Measured before
+this was built: `claude -p --allowedTools Read,Grep` refuses an edit and
+`Read,Grep,Edit,Write` writes only inside the cwd; `codex exec -s
+read-only` refuses and `-s workspace-write` writes only inside the cwd.
+
 Carried from the transport's predecessors, because they were measured:
 `env_unset` for the Claude Code CLI, which refuses to nest inside itself
 while `CLAUDECODE` is set; executable candidates beyond PATH (npm and WinGet
@@ -30,9 +41,9 @@ import threading
 import time
 from pathlib import Path
 
-from ..types import MODEL, ON_PREM, SCHEMA, STREAM, Readiness, Request, Response, Spec
+from ..types import MODEL, ON_PREM, SCHEMA, STREAM, TOOLS, Readiness, Request, Response, Spec
 
-_PLACEHOLDERS = ("{model}", "{schema}", "{schema_file}", "{prompt_file}", "{output_file}", "{cwd}")
+_PLACEHOLDERS = ("{model}", "{schema}", "{schema_file}", "{prompt_file}", "{output_file}", "{cwd}", "{tools}")
 
 
 def find_exe(name: str, candidates: tuple[str, ...] = ()) -> str | None:
@@ -72,6 +83,8 @@ class SubprocessCli:
             caps.add(MODEL)
         if "{schema}" in tpl or "{schema_file}" in tpl:
             caps.add(SCHEMA)
+        if "{tools}" in tpl and spec.tools:
+            caps.add(TOOLS)
         if spec.on_prem:
             caps.add(ON_PREM)
         return frozenset(caps)
@@ -90,11 +103,16 @@ class SubprocessCli:
     def _argv(self, spec: Spec, req: Request, exe: str, scratch: Path) -> tuple[list[str], dict, list[str]]:
         """The template substituted. An empty placeholder removes its own
         token AND the flag before it, so `--model {model}` with no model
-        never becomes `--model ""`. Returns (argv, files-made, honoured)."""
+        never becomes `--model ""` -- and `{tools}` is empty unless the
+        request names a working directory, so a grant never reaches a call
+        that gave the child nothing to work in. Returns (argv, files-made,
+        honoured)."""
         values = {
             "{model}": spec.model,
             "{schema}": json.dumps(req.schema) if req.schema is not None else "",
-            "{schema_file}": "", "{prompt_file}": "", "{output_file}": "", "{cwd}": str(scratch),
+            "{schema_file}": "", "{prompt_file}": "", "{output_file}": "",
+            "{cwd}": req.workdir or str(scratch),
+            "{tools}": spec.tools if req.workdir else "",
         }
         made: dict[str, Path] = {}
         tpl = " ".join(spec.command)
@@ -129,6 +147,8 @@ class SubprocessCli:
             honoured.append(MODEL)
         if ({"{schema}", "{schema_file}"} & used) and req.schema is not None:
             honoured.append(SCHEMA)
+        if "{tools}" in used:
+            honoured.append(TOOLS)
         return out, made, honoured
 
     # -- running ----------------------------------------------------------------------
@@ -139,6 +159,9 @@ class SubprocessCli:
         if not exe:
             return Response("failed", error=f"{name or '(no command)'} is not on PATH")
         scratch = Path(tempfile.mkdtemp(prefix="ailib-cli-"))
+        # The child's cwd: the caller's working directory when the request
+        # names one (kept afterwards, it is theirs), else the scratch.
+        cwd = Path(req.workdir) if req.workdir else scratch
         try:
             argv, made, honoured = self._argv(spec, req, exe, scratch)
             env = dict(os.environ)
@@ -148,12 +171,12 @@ class SubprocessCli:
             started = time.monotonic()
             try:
                 if req.stream_to is not None:
-                    rc, out, err = self._stream(argv, env, scratch, stdin, req)
+                    rc, out, err = self._stream(argv, env, cwd, stdin, req)
                     honoured.append(STREAM)
                 else:
                     p = subprocess.run(argv, input=stdin, capture_output=True, text=True,
                                        encoding="utf-8", errors="replace", timeout=req.timeout,
-                                       cwd=str(scratch), env=env)
+                                       cwd=str(cwd), env=env)
                     rc, out, err = p.returncode, p.stdout, p.stderr
             except subprocess.TimeoutExpired:
                 return Response("failed", error=f"{name} timed out after {req.timeout}s")
@@ -203,10 +226,10 @@ class SubprocessCli:
                 return "", f"{spec.command[0]} wrote no answer file: {e}"
         return "", f"unknown answer locator {where!r}"
 
-    def _stream(self, argv, env, scratch, stdin, req: Request):
+    def _stream(self, argv, env, cwd, stdin, req: Request):
         """Echo the child's output to `req.stream_to` as it arrives, with the
         timeout enforced by polling; returns (rc, output, '')."""
-        proc = subprocess.Popen(argv, env=env, cwd=str(scratch),
+        proc = subprocess.Popen(argv, env=env, cwd=str(cwd),
                                 stdin=subprocess.PIPE if stdin is not None else None,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, encoding="utf-8", errors="replace")

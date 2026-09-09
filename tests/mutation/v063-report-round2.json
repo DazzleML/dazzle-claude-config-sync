@@ -1,0 +1,55 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "-x",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_transport_cli.py",
+      "tests/test_ailib_types.py",
+      "tests/test_ailib_presets.py",
+      "tests/test_vendored_ailib.py"
+    ],
+    "timestamp": "2026-09-09T13:12:59-04:00"
+  },
+  "results": [
+    {
+      "id": "cli-8",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "round 2: the streaming path ignores the workdir -- killing test test_the_streaming_path_runs_the_child_in_the_workdir_too",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "types-5",
+      "file": "dazzle_claude_config/_vendor/ailib/types.py",
+      "note": "round 2: the temperature dropped from the fingerprint -- killing assertion added to test_a_request_fingerprint_excludes_the_stream_and_the_timeout",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "ailib-4",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "round 2: claude-strict's grant narrowed -- killing assertion added to test_the_cli_presets_carry_a_tools_grant_that_only_a_workdir_unlocks",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 3
+  },
+  "anomalies": []
+}

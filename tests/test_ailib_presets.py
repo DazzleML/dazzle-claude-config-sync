@@ -108,6 +108,39 @@ def test_ollama_and_openai_are_presets_too():
     assert o.endpoint == "https://api.openai.com/v1" and o.credential_env == "OPENAI_API_KEY"
 
 
+def test_the_cli_presets_carry_a_tools_grant_that_only_a_workdir_unlocks():
+    """U3 of #64. claude and codex gain the flag their sandbox measurement
+    proved (probe_claude_sandbox.py, probe_codex_sandbox.py, 2026-09-09):
+    `--allowedTools Read,Grep,Edit,Write` writes only inside the cwd;
+    `-s workspace-write` likewise. Without a workdir on the request the
+    placeholder and its flag vanish, so pass 1's argv is unchanged; the
+    servers have no grant at all."""
+    from pathlib import Path
+    from dazzle_claude_config._vendor.ailib.transports.cli import SubprocessCli
+    from dazzle_claude_config._vendor.ailib.types import Request
+    c = ailib.spec_for("claude")
+    assert ("--allowedTools", "{tools}") in tuple(zip(c.command, c.command[1:]))
+    assert c.tools == "Read,Grep,Edit,Write" and "tools" in build(c).capabilities
+    x = ailib.spec_for("codex")
+    assert x.command[:3] == ("codex", "exec", "--skip-git-repo-check")        # the pinned prefix stands
+    assert ("-s", "{tools}") in tuple(zip(x.command, x.command[1:]))
+    assert x.tools == "workspace-write" and "tools" in build(x).capabilities
+    # the strict variants carry the SAME grant as their base preset (v0.6.3
+    # sweep, survivor ailib-4: a narrower literal on one of them survived)
+    assert ailib.spec_for("claude-strict").tools == c.tools == "Read,Grep,Edit,Write"
+    assert ailib.spec_for("codex-strict").tools == x.tools == "workspace-write"
+    assert ailib.spec_for("lmstudio").tools == "" and "tools" not in build(ailib.spec_for("lmstudio")).capabilities
+    # pass 1's argv, byte for byte: no workdir, no grant on the command line
+    argv, _, honoured = SubprocessCli()._argv(c, Request(prompt="p"), "claude", Path("."))
+    assert argv == ["claude", "--output-format", "text", "--model", "claude-opus-5", "-p", "-"]
+    assert "tools" not in honoured
+    argv, _, _ = SubprocessCli()._argv(x, Request(prompt="p"), "codex", Path("."))
+    assert argv == ["codex", "exec", "--skip-git-repo-check", "-"]
+    # with a workdir the grant rides along
+    argv, _, honoured = SubprocessCli()._argv(c, Request(prompt="p", workdir="C:/sandbox"), "claude", Path("."))
+    assert argv[argv.index("--allowedTools") + 1] == "Read,Grep,Edit,Write" and "tools" in honoured
+
+
 # -- overrides from the person's config ------------------------------------------
 
 def test_config_overrides_endpoint_model_and_key_name():

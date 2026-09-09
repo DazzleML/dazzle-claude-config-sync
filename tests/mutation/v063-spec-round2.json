@@ -1,0 +1,20 @@
+{
+ "test_command": [
+  "python",
+  "-m",
+  "pytest",
+  "-q",
+  "-x",
+  "-p",
+  "no:cacheprovider",
+  "tests/test_transport_cli.py",
+  "tests/test_ailib_types.py",
+  "tests/test_ailib_presets.py",
+  "tests/test_vendored_ailib.py"
+ ],
+ "mutations": [
+  {"id": "cli-8", "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py", "original": "rc, out, err = self._stream(argv, env, cwd, stdin, req)", "mutated": "rc, out, err = self._stream(argv, env, scratch, stdin, req)", "note": "round 2: the streaming path ignores the workdir -- killing test test_the_streaming_path_runs_the_child_in_the_workdir_too"},
+  {"id": "types-5", "file": "dazzle_claude_config/_vendor/ailib/types.py", "original": "\"max_tokens\": self.max_tokens, \"temperature\": self.temperature},", "mutated": "\"max_tokens\": self.max_tokens},", "note": "round 2: the temperature dropped from the fingerprint -- killing assertion added to test_a_request_fingerprint_excludes_the_stream_and_the_timeout"},
+  {"id": "ailib-4", "file": "dazzle_claude_config/ailib.py", "original": "tools=_CLAUDE_TOOLS, answer=\"stdout-json:structured_output\",", "mutated": "tools=\"Read,Grep\", answer=\"stdout-json:structured_output\",", "note": "round 2: claude-strict's grant narrowed -- killing assertion added to test_the_cli_presets_carry_a_tools_grant_that_only_a_workdir_unlocks"}
+ ]
+}

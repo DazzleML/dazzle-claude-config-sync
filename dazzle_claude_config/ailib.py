@@ -74,22 +74,35 @@ _CODEX_CANDIDATES = ("%APPDATA%/npm/codex.cmd", "%LOCALAPPDATA%/Microsoft/WinGet
 #: a different model, and which a merge should not silently inherit.
 CLAUDE_DEFAULT_MODEL = "claude-opus-5"
 
+#: The grants the deep merge's sandbox rests on, each measured on
+#: 2026-09-09 (tests/one-offs/thinking/deep-merge/probe_claude_sandbox.py,
+#: probe_codex_sandbox.py): with these the CLI edits INSIDE its working
+#: directory and nothing outside it; with `Read,Grep` / `read-only` it
+#: refuses to edit at all. They reach the command line only when the
+#: request names a working directory -- the `{tools}` placeholder and its
+#: flag vanish otherwise, so a pass-1 merge's argv is unchanged.
+_CLAUDE_TOOLS = "Read,Grep,Edit,Write"
+_CODEX_TOOLS = "workspace-write"
+
 PRESETS: dict[str, _Spec] = {
     "claude": _Spec("cli", name="claude", model=CLAUDE_DEFAULT_MODEL,
-                    command=("claude", "--output-format", "text", "--model", "{model}", "-p", "-"),
+                    command=("claude", "--output-format", "text", "--model", "{model}",
+                             "--allowedTools", "{tools}", "-p", "-"),
+                    tools=_CLAUDE_TOOLS,
                     env_unset=_CLAUDE_ENV_UNSET, candidates=_CLAUDE_CANDIDATES, on_prem=False),
     "claude-strict": _Spec("cli", name="claude-strict", model=CLAUDE_DEFAULT_MODEL,
                            command=("claude", "--output-format", "json", "--model", "{model}",
-                                    "--json-schema", "{schema}", "-p", "-"),
-                           answer="stdout-json:structured_output",
+                                    "--allowedTools", "{tools}", "--json-schema", "{schema}", "-p", "-"),
+                           tools=_CLAUDE_TOOLS, answer="stdout-json:structured_output",
                            env_unset=_CLAUDE_ENV_UNSET, candidates=_CLAUDE_CANDIDATES, on_prem=False),
     "codex": _Spec("cli", name="codex",
-                   command=("codex", "exec", "--skip-git-repo-check", "-m", "{model}", "-"),
-                   candidates=_CODEX_CANDIDATES, on_prem=False),
+                   command=("codex", "exec", "--skip-git-repo-check", "-s", "{tools}", "-m", "{model}", "-"),
+                   tools=_CODEX_TOOLS, candidates=_CODEX_CANDIDATES, on_prem=False),
     "codex-strict": _Spec("cli", name="codex-strict",
-                          command=("codex", "exec", "--skip-git-repo-check", "-m", "{model}",
+                          command=("codex", "exec", "--skip-git-repo-check", "-s", "{tools}", "-m", "{model}",
                                    "--output-schema", "{schema_file}", "-o", "{output_file}", "-"),
-                          answer="file:{output_file}", candidates=_CODEX_CANDIDATES, on_prem=False),
+                          tools=_CODEX_TOOLS, answer="file:{output_file}",
+                          candidates=_CODEX_CANDIDATES, on_prem=False),
     "lmstudio": _Spec("openai_compat", name="lmstudio", endpoint="http://127.0.0.1:1234/v1",
                       extra=(("reasoning_effort", "none"),),
                       hint="in LM Studio: the Developer tab"),

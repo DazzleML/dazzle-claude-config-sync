@@ -4,6 +4,14 @@ All notable changes to dazzle-claude-config (ccs) are documented here. Format fo
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-09-09
+
+### Added
+- **A CLI backend can work inside a directory the caller prepared.** The second piece of the deep merge: the AI library's subprocess transport can run `claude` or `codex` inside a working directory the caller hands it -- the child runs there, may read and write there, and the directory is left as the child left it for the caller to read back -- while the transport still keeps its own throwaway scratch for the call's schema and prompt files. Only then do the presets send the CLI's own sandbox flag, measured before this was built: claude's `--allowedTools Read,Grep,Edit,Write` and codex's `-s workspace-write` write only inside that directory (their read-only forms refuse to edit at all). A merge that names no such directory -- every `ccs merge --ai` today -- sends exactly the command line it sent before; the report's `answered by ... via ...` identity for the two CLI presets now carries the new placeholder, so their cached answers from before this version are recomputed once. Nothing in `ccs merge` changes yet.
+
+### Fixed
+- **Streaming a CLI's output (`--ai-verbose`) no longer moves the child out of its working directory.** Found by the mutation sweep of this unit before it shipped: the streaming branch handed the child the throwaway scratch even when a working directory was named. Both branches now agree.
+
 ## [0.6.2] - 2026-09-09
 
 ### Added
@@ -457,7 +465,8 @@ Fixes both issues 0.3.0 shipped as known, plus five more found by running the to
 - Console scripts `ccs` and `dazzle-claude-config`; stdlib-only, Python 3.10+
 - 53 automated tests + tester-agent exploratory report + human test checklist (`tests/checklists/v0.1.0__Phase1__collect-apply-status-diff.md`)
 
-[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.3...HEAD
+[0.6.3]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.5.20...v0.6.0
