@@ -1,0 +1,173 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "-x",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_airung.py"
+    ],
+    "timestamp": "2026-09-09T08:06:55-04:00"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Widens the ATX heading indent boundary from 0-3 spaces to 0-4, a plausible off-by-one that admits headings CommonMark would treat as indented code.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M2",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Changes the def/class name capture from `\\w*` to `\\w+`, silently failing to recognize single-character identifiers like `def f():`.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M3",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Drops the `filter` keyword from PowerShell block recognition, a plausible simplify-the-alternation refactor that quietly stops matching PS filter blocks.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Drops hyphen support from the `function name` form's capture group while leaving the `name()` form unchanged, an inconsistent normalization loss between the two alternatives.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M5",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Off-by-one on the preamble-insertion guard in split_regions: now fires when the first start is at line 1 rather than line 0, mis-tiling the first region.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M6",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Breaks the markdown fence toggle: once a fenced block opens, the parser can never exit it, so every heading after the first fence is swallowed as fence content.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M7",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Removes the decorator-attachment guard clause: pending is overwritten by every decorator instead of remembering only the first, so a def attaches to its last decorator rather than its first.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M8",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Flips the toplevel-run merging rule in _py_starts: a new toplevel start now appends only when the previous run WAS already toplevel, so consecutive statements never merge and top-level lines get an extra split every line instead of collapsing.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M9",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Changes the brace-close rule in _brace_starts from checking the line OPENS with `}` to checking it ENDS with `}`, so a line like `x = { }` at column 0 would wrongly close the function block.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M10",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "And/or swap on the blank-line paragraph rule: a new paragraph start now fires on almost every non-blank line, not just the first line after a blank run.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M11",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Inverts the anchors() opcode filter so it collects the EQUAL spans instead of the differing ones, making every unchanged region look like an anchor and every real diff invisible.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M12",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Boundary flip on _overlaps' empty-span (a1 == a2) branch: an anchor point sitting exactly at region.end no longer counts as overlapping that region.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M13",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "_touched's i1==i2 fallback (also covering the end-of-file insertion case) now returns the FIRST region instead of the LAST when an empty span falls past every region's end, misattributing trailing insertions to the wrong region.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M14",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Weakens needed_rung's anchored test from all() to any(): an edit spanning several regions is now rung-1 if just ONE touched region has an anchor, instead of requiring every touched region to have one.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M15",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Swaps the literal rung numbers for payload-file edits: anchored (hunk-level) edits now score rung 2 and unanchored (file-level) edits rung 1, inverting the ladder for the payload file.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M16",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Inverts the others-loop no-op skip: unchanged other-files (before == after) are now treated as edits and pushed into the verdict, while genuinely changed files are skipped and never scored.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M17",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Inverts the path-in-neighbours membership test, so a listed neighbour path scores rung 4 (project) and everything else scores rung 3 (neighbours).",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M18",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Changes max()'s default from 0 to 1: a candidate with no edits at all now reports needed rung 1 (hunk) instead of 0, wrongly demanding scope for a no-op.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "survived": 7,
+    "killed": 11
+  },
+  "anomalies": []
+}

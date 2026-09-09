@@ -4,6 +4,11 @@ All notable changes to dazzle-claude-config (ccs) are documented here. Format fo
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-09-09
+
+### Added
+- **The rung classifier, the first piece of the deep merge.** `ccs merge --ai` will soon be able to ask a model to read the parts of a file git merged on its own and write text there -- the case where two people's changes each look fine and are wrong together -- but only as far as you allow: the changed regions and their surroundings (the section under the same heading, the enclosing function), the whole file, the file's neighbours, or anything in the project. This release ships the pure piece that measures how far an edit reached: files are split into regions by their suffix (Markdown from each heading to the next, Python and shell into their top-level functions and classes, everything else into paragraphs), the regions git's own merge changed are the anchors, and every edit a model makes is placed on that four-rung ladder. Nothing in `ccs merge` changes yet; the classifier was measured against copies of the maintainer's 31 real merge inputs first (`tests/one-offs/thinking/deep-merge/enumerate_rung1.py`, its output beside it), where the narrowest rung turned out to be a sharp territory -- typically one or two headed sections per file.
+
 ## [0.6.1] - 2026-09-09
 
 ### Added
@@ -452,7 +457,8 @@ Fixes both issues 0.3.0 shipped as known, plus five more found by running the to
 - Console scripts `ccs` and `dazzle-claude-config`; stdlib-only, Python 3.10+
 - 53 automated tests + tester-agent exploratory report + human test checklist (`tests/checklists/v0.1.0__Phase1__collect-apply-status-diff.md`)
 
-[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.5.20...v0.6.0
 [0.5.17]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.5.16...v0.5.17
