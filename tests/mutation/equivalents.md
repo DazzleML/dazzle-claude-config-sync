@@ -229,3 +229,22 @@ git hash-object (first 12). Only separated-generation runs (modes 1-2) write her
   **equivalent in practice** -- a failing `rev-parse --show-toplevel`
   prints to stderr, so `out.strip()` is empty and the guard still fires.
   Re-triage if `_run` ever captures stderr into `out`.
+
+## dazzle_claude_config/cli.py @ f75a2c14af23
+
+- M6 (v0.6.5 sweep, `_ai_options`): `backend=steps[0].backend` ->
+  `steps[-1].backend`. **equivalent, after the fix the same mutant
+  prompted.** Round 1 killed nothing and the mutant pointed at a real
+  defect: `aistep.ai_step` reads `opts.backend`, so a plan whose steps
+  differ (`--ai claude,deep:lmstudio`) ran the RECIPE on the deep step's
+  backend. `merge.run` now hands each step `replace(ai, backend=
+  step.backend)`, and after that every reader of `opts.backend` is inside
+  `ai_step` and receives the step's own; `aideep` takes `step.backend`
+  throughout; `AiOptions.backend` survives only as `plan()`'s pre-plan
+  fallback, unused whenever `steps` is set. So no plan can observe the
+  field's value, and the mutant cannot be killed -- while the defect it
+  found is pinned by
+  `test_ai_plan.py::test_each_step_runs_on_its_own_backend_M6` (a guard
+  over the pair: it fails only if the step_opts fix AND the first-step
+  value are both undone). (2026-09-09, generation mode 1.) Re-triage the
+  moment any reader consults `opts.backend` directly again.

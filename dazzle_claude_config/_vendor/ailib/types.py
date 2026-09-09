@@ -111,15 +111,24 @@ class Spec:
         named by its BASENAME only: the full path carries the account name,
         records get pasted into issues, and a moved home must not flush the
         cache either."""
-        parts = [self.transport, self.endpoint.rstrip("/"), self.model, " ".join(self.command)]
+        # Labelled, and only the parts that exist: an identity is read by
+        # people in records and reports, and `cli||||...` said nothing about
+        # which fields were empty (2026-09-09; one cache invalidation).
+        parts = [self.transport]
+        if self.endpoint:
+            parts.append(f"endpoint={self.endpoint.rstrip('/')}")
+        if self.model:
+            parts.append(f"model={self.model}")
+        if self.command:
+            parts.append(f"command={' '.join(self.command)}")
         if self.extra:
-            parts.append(json.dumps(sorted(self.extra), sort_keys=True, default=str))
+            parts.append(f"extra={json.dumps(sorted(self.extra), sort_keys=True, default=str)}")
         if self.credential_env:
             parts.append(f"key:{self.credential_env}")
         for path in (self.credential_file, *self.credential_fallbacks):
             if path:
                 parts.append(f"keyfile:{_basename(path)}")
-        return "|".join(parts)
+        return " ".join(parts)
 
 
 @dataclass(frozen=True)

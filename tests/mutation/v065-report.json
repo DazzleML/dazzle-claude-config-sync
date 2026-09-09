@@ -1,0 +1,192 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "-x",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_ai_plan.py",
+      "tests/test_merge_ai.py",
+      "tests/test_ailib_types.py",
+      "tests/test_aistep.py"
+    ],
+    "timestamp": "2026-09-09T15:03:26-04:00"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "bare `deep` ignores the recipe that came before it and runs on the configured backend (`claude,deep` becomes two backends)",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M2",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "the recipe inserted before a lone deep step runs on the configured backend, not the deep step's (`deep:codex` no longer one backend, two passes)",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M3",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "the one-recipe-per-plan guard checks the wrong kind: `--ai a,b` is accepted and builds two recipe steps",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "None-vs-truthiness: an empty-string config value is no longer normalised to prompt-only",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M5",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "boolean flip: the plan line prints for recipe-only plans and is silent for the deep plans it exists for",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M6",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "wrong index: AiOptions.backend is the last step's backend, so `claude,deep:codex` reports codex as the backend",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M7",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "deep-escaped falls through every branch: NOT KEPT, the reports and the escapes are never printed",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M8",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "None-vs-truthiness: an empty summary prints a blank indented line (only the parts that exist)",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M9",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "wrong field: the printed --variant hint carries the file stem instead of the answer number",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M10",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "a previously chosen answer wins over the answer the person actually put in `.merged`, so --accept asks with the wrong guarantees and `chosen` never moves",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M11",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "the deep step never reads the recipe's proposal; it always reads git's diff3 merge, conflict markers and all",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M12",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "a skipped deep step no longer leaves the item pending, so the recipe's copy block runs as if the deep step had answered",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M13",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "reordered steps: the record with the moved `chosen` is written before the question, so chosen moves on a no as well as a yes",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M14",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "and/or swap: a previously accepted record is not asked again when the answer differs, and a never-accepted one is only asked when it does",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M15",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "removed guard: the loss and invention checks become a tripwire for every item, so a recipe proposal or a hand edit that drops lines is no longer gated",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M16",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "comparison flip: the loss check gates and the marker check is reported only -- the opposite of the split",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M17",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "when the recipe had nothing to decide, the deep step is skipped with a 'resolve that first' reason instead of reading git's clean merge",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M18",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "boundary: a live path with exactly target+rel parts yields Path() (the cwd) as the territory root instead of None",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M19",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "the pre-plan default is dropped: options built without steps run no AI step at all",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M20",
+      "file": "dazzle_claude_config/_vendor/ailib/types.py",
+      "note": "dropped normalisation: the same endpoint with and without a trailing slash yields two identities (two cache keys)",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 7,
+    "survived": 13
+  },
+  "anomalies": []
+}

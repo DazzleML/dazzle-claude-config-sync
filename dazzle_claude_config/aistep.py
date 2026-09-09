@@ -76,6 +76,15 @@ class AiOptions:
     api_key_env: str | None = None  # override the NAME of the credential's env var
     api_key_file: str | None = None  # a key file read before the environment (the PATH)
     keys_dir: Path | None = None   # `~/claude/keys`: the default key files, read after it
+    # The plan (U5, #64): the steps `--ai` named, in order -- `claude,deep`
+    # is the recipe on claude, then the deep step on claude. Empty means the
+    # recipe alone on `backend` (every caller from before the plan existed).
+    steps: tuple = ()
+    scope: int = 1                 # --ai-scope: the rung the deep step may reach (airung.RUNGS)
+
+    def plan(self) -> tuple:
+        """The steps, with the pre-plan default filled in."""
+        return self.steps or (AiStep("recipe", self.backend),)
 
 
 @dataclass(frozen=True)
@@ -222,6 +231,7 @@ def ai_step(*, label: str, ours: Path, base: Path, theirs: Path, merged: Path,
         from . import ailib
         backend = ailib.build_backend(opts)
         ready = backend.probe()
+        out.warning = ready.warning              # #62: "yes, but" reaches the report
         if not ready.ok:
             out.status = "backend-failed"
             out.error = f"backend {opts.backend!r} is not available ({ready.reason})"

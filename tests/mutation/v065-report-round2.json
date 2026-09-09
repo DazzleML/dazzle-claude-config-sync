@@ -1,0 +1,136 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "-x",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_ai_plan.py",
+      "tests/test_merge_ai.py",
+      "tests/test_ailib_types.py",
+      "tests/test_aistep.py"
+    ],
+    "timestamp": "2026-09-09T18:48:37-04:00"
+  },
+  "results": [
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "round 2: a null backend in the config -- killing test test_a_config_that_spells_the_backend_out_as_null_reads_as_prompt_only_M4",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M6",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "round 2: the options' backend -- killing test test_each_step_runs_on_its_own_backend_M6 (and the step_opts fix behind it)",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M7",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "round 2: deep-escaped silent -- killing test test_a_backend_that_escapes_the_sandbox_is_reported_in_the_merge_report_M7",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M8",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "round 2: a blank summary line -- killing test test_an_empty_summary_prints_no_blank_line_M8",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M9",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "round 2: the variant hint -- killing test test_the_variant_hint_names_the_answer_number_M9",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M10",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "round 2 (restated for the fixed code): answer 0 is an answer -- killing test test_the_question_is_asked_about_the_answer_in_merged_not_the_last_one_chosen_M10",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M11",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "round 2: the deep step reads git's conflicted merge -- killing test test_the_deep_step_reads_the_recipes_proposal_not_gits_conflicted_merge_M11",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M12",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "round 2: a skipped deep step not pending -- killing test test_a_deep_step_that_cannot_run_leaves_the_file_pending_M12",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M15",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "round 2: the tripwire split applied to every item -- killing test test_a_hand_merge_that_loses_a_line_is_still_refused_M15",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M17",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "round 2: a clean merge skips the deep step -- killing test test_a_clean_merge_still_gets_the_deep_step_over_gits_own_result_M17",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M18",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "round 2: the live-root boundary -- killing test test_live_root_of_a_path_that_is_exactly_target_and_rel_is_none_M18",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M19",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "round 2: the pre-plan default -- killing test test_options_without_a_plan_still_run_the_recipe_M19",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M20",
+      "file": "dazzle_claude_config/_vendor/ailib/types.py",
+      "note": "round 2: the endpoint's trailing slash -- killing test test_identity_normalises_the_endpoints_trailing_slash",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 12,
+    "survived": 1
+  },
+  "anomalies": []
+}

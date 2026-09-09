@@ -36,7 +36,7 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from . import inject
@@ -1370,6 +1370,14 @@ class MergeResult:
     ai_edited: list[tuple[MergeItem, int]] = field(default_factory=list)  # yours; n lines from the proposal
     ai_stale: dict[str, list[str]] = field(default_factory=dict)  # label -> the sides that moved since
     ai_declined: list[MergeItem] = field(default_factory=list)  # --accept asked, and was not told yes
+    # -- the deep step (U5, #64) -------------------------------------------------
+    # label -> the answer index `.merged` is byte-for-byte equal to, when that
+    # is a deep variant (n >= 1); the accept question carries THAT answer's
+    # guarantees and `chosen` moves to it only on a yes.
+    ai_matching: dict[str, int] = field(default_factory=dict)
+    # (item, the loss-check lines) for a deep variant at --accept: a tripwire,
+    # printed, never the gate (C8).
+    ai_tripwire: list[tuple[MergeItem, list[str]]] = field(default_factory=list)
     ai_records: dict[str, object] = field(default_factory=dict)  # label -> airecord.Record
 
 
@@ -1610,10 +1618,22 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
         rec = airecord.load(airecord.record_path(merged))
         if rec is not None and item in res.resumed:
             st = airecord.state(rec, merged.read_bytes())
-            if st == "unchanged":
+            matching = airecord.matching_answer(rec, merged.read_bytes())
+            if st == "unchanged" or matching is not None:
+                # `.merged` is the copy ccs made, or byte-for-byte another of
+                # the record's answers -- a deep variant the person put there
+                # (U5, #64). Either way it is the AI's, not theirs: unreviewed
+                # until --accept asks with THAT answer's guarantees, and
+                # `chosen` reaches the record only on a yes. `is not None`,
+                # not truthiness: answer 0 is an answer, and a `.merged` moved
+                # BACK to it must move `chosen` back too, or the record keeps
+                # claiming a variant the person no longer has (v0.6.5 sweep,
+                # survivor M10).
                 res.resumed.remove(item)
                 res.ai_unchanged.append(item)
                 res.ai_records[item.label] = rec
+                if matching is not None:
+                    res.ai_matching[item.label] = matching
                 stale = airecord.stale_sides(rec, item.live.read_bytes(), item.repo.read_bytes())
                 if stale:
                     res.ai_stale[item.label] = stale
@@ -1633,14 +1653,58 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
                     res.ai_records[item.label] = rec
         if ai is not None:
             lg = livegit.probe(item.live)
-            out = aistep.ai_step(label=item.label, ours=item.live, base=item.base,
-                                 theirs=item.repo, merged=merged, opts=ai,
-                                 workdir=ws / (safe + ".ai-work"),
-                                 dossier=render_dossier(item, remote=remote, live=lg),
-                                 base_kind=_base_kind(item),
-                                 facts=dossier_facts(item, live=lg))
-            res.ai.append((item, out))
-            if out.status == "proposed":
+            dossier = render_dossier(item, remote=remote, live=lg)
+            facts = dossier_facts(item, live=lg)
+            recipe_out = None
+            for step in ai.plan():
+                if step.kind == "deep":
+                    # The deep step (U4/U5, #64) reads the recipe's result --
+                    # or git's clean merge when the recipe had nothing to
+                    # decide -- for meaning, in a sandbox, under the scope.
+                    # Its answer is a numbered variant beside the others,
+                    # never copied, never chosen; a failure is pending work.
+                    from . import aideep
+                    mech, why = _mechanical_for(item, recipe_out, ws / (safe + ".ai-work"))
+                    if mech is None:
+                        dout = aistep.AiOutcome("deep-skipped", kind="deep", backend=step.backend,
+                                                scope_allowed=ai.scope, error=why)
+                    else:
+                        variants = ([airecord.proposal_path(merged)]
+                                    if airecord.proposal_path(merged).is_file() else [])
+
+                        def _tripwire(candidate: Path, _item=item) -> list[str]:
+                            return list(validate(_item, candidate, probes=probes).failures)
+                        dout = aideep.deep_step(
+                            label=item.label, base=item.base.read_bytes(), ours=item.live.read_bytes(),
+                            theirs=item.repo.read_bytes(), mechanical=mech, variants=variants,
+                            entry=item.entry, rel=item.rel, checkout_repo=checkout,
+                            live_root=_live_root_of(item), opts=ai, step=step, scope=ai.scope,
+                            workdir=ws / (safe + aisandbox_suffix()), dossier=dossier, facts=facts,
+                            merged=merged, tripwire=_tripwire, base_kind=_base_kind(item))
+                    res.ai.append((item, dout))
+                    if dout.status in ("deep-failed", "deep-escaped", "deep-skipped"):
+                        res.ai_pending.append(item)
+                    continue
+                # The step names its own backend and `ai_step` reads the
+                # OPTIONS', so a plan whose two steps differ
+                # (`--ai claude,deep:lmstudio`) would have run the recipe on
+                # whichever backend `_ai_options` happened to put there. The
+                # options are per run; the backend is per step. (v0.6.5 sweep,
+                # survivor M6.)
+                step_opts = ai if step.backend == ai.backend else replace(ai, backend=step.backend)
+                out = aistep.ai_step(label=item.label, ours=item.live, base=item.base,
+                                     theirs=item.repo, merged=merged, opts=step_opts,
+                                     workdir=ws / (safe + ".ai-work"),
+                                     dossier=dossier, base_kind=_base_kind(item), facts=facts)
+                recipe_out = out
+                res.ai.append((item, out))
+                if out.status in ("prompt-written", "backend-failed"):
+                    # Nothing to validate: the prompt is for the person to
+                    # carry, or the backend said no. The report says which;
+                    # the exit code says work is pending.
+                    res.ai_pending.append(item)
+                if out.status != "proposed":
+                    continue
                 # The validator is the backstop on the assembled file -- the
                 # same gate a hand merge passes -- and the record says what
                 # it said. With ONE difference, and it is the whole point of
@@ -1673,11 +1737,7 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
                     res.ai_copied.append(item)
                     res.ai_unchanged.append(item)
                     res.ai_records[item.label] = out.record
-            if out.status in ("prompt-written", "backend-failed"):
-                # Nothing to validate: the prompt is for the person to carry,
-                # or the backend said no. The report says which; the exit code
-                # says work is pending.
-                res.ai_pending.append(item)
+            if item in res.ai_pending:
                 continue
         # DO NOT reopen a file we just decided to resume. The merge tool is
         # handed `merged` as its OUTPUT pane, and the common ones treat that
@@ -1732,6 +1792,15 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
             _rec = airecord.load(airecord.record_path(merged))
             if _rec is not None and _rec.valid and _rec.licensed:
                 v = _minus_licensed(v, [(0, [], list(_rec.licensed))])
+        if not v.ok and item.label in res.ai_matching:
+            # `.merged` is a deep variant (U5, #64), which may hold text no
+            # side wrote: the loss, invented-content and duplication checks
+            # are a TRIPWIRE for it -- printed beside the accept question,
+            # never the gate (C8). Conflict markers, a regressed pattern and
+            # a credential shape still gate.
+            v, trip = _deep_tripwire(v)
+            if trip:
+                res.ai_tripwire.append((item, trip))
         # "A human resolved it" = a tool was launched, or the workspace file
         # carries edits since seeding (the headless flow: edit, re-run).
         human = launch_tool or item in res.resumed
@@ -1749,9 +1818,13 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
             # The proposal the person never touched. "Identical bytes" cannot
             # say whether they read it; the record can say whether they ever
             # answered yes -- and that is the only thing stored. Non-interactive
-            # runs never say yes.
+            # runs never say yes. A deep variant in `.merged` (U5, #64) is
+            # asked with ITS guarantees: `chosen` moves to it in memory for
+            # the question, and reaches the record only on a yes.
             rec = res.ai_records[item.label]
-            if not rec.accepted_unchanged:
+            previous = rec.chosen
+            rec.chosen = res.ai_matching.get(item.label, previous)
+            if not rec.accepted_unchanged or rec.chosen != previous:
                 ask_ai = confirm_ai or _ask_ai_on_console
                 if not ask_ai(item, rec):
                     res.ai_declined.append(item)
@@ -1976,9 +2049,20 @@ def _ask_ai_on_console(item: MergeItem, rec) -> bool:
         return False
     c = render.c
     when = (rec.created or "")[:10]
-    print(f"{c('bold_cyan', item.label)}: this result is the AI's proposal, unchanged "
-          f"since ccs wrote it on {when} "
-          f"({c('dim', 'backend ' + rec.backend + ('; rules ' + rec.rules_path + ' @ ' + rec.rules_sha[:7] if rec.rules_path else '; no rules file'))}).")
+    answer = rec.answer if isinstance(rec.answer, dict) else {}
+    if rec.chosen:
+        # a deep variant (U5, #64): named by its number, with the backend
+        # that made it and the guarantees line it carries
+        which = (f"answer .merged-ai.{rec.chosen} ({airecord.answer_kind(answer)} via "
+                 f"{answer.get('backend') or rec.backend})")
+        made = (answer.get("created") or rec.created or "")[:10]
+    else:
+        which, made = "proposal", when
+    print(f"{c('bold_cyan', item.label)}: this result is the AI's {which}, unchanged "
+          f"since ccs wrote it on {made} "
+          f"({c('dim', 'backend ' + (answer.get('backend') or rec.backend) + ('; rules ' + rec.rules_path + ' @ ' + rec.rules_sha[:7] if rec.rules_path else '; no rules file'))}).")
+    if answer.get("guarantees"):
+        print("  " + c("dim", str(answer["guarantees"])))
     print("  " + c("yellow", "Nothing here has been through your eyes that ccs can see."))
     print(f"  If you have read it and want it installed: {c('bold', 'y')}.")
     try:
@@ -1987,6 +2071,58 @@ def _ask_ai_on_console(item: MergeItem, rec) -> bool:
     except (EOFError, KeyboardInterrupt):
         return False
     return answer.strip().lower() in ("y", "yes")
+
+
+def aisandbox_suffix() -> str:
+    """The deep step's sandbox directory suffix, from its own module (a
+    late import: the AI modules are never loaded at CLI start)."""
+    from . import aisandbox
+    return aisandbox.SANDBOX_SUFFIX
+
+
+def _live_root_of(item: MergeItem) -> Path | None:
+    """The territory root the item's live file sits under: `live` is
+    `<root>/<entry.target>/<rel>`, so strip those parts back off."""
+    target = getattr(item.entry, "target", None)
+    if not target:
+        return None
+    strip = len(Path(target).parts) + (len(Path(item.rel).parts) if item.rel else 0)
+    parts = item.live.parts
+    if strip >= len(parts):
+        return None
+    return Path(*parts[:len(parts) - strip])
+
+
+def _mechanical_for(item: MergeItem, recipe_out, workdir: Path) -> tuple[bytes | None, str]:
+    """What the deep step reads for meaning: the recipe's proposal when it
+    made one, git's own clean merge when there was nothing to decide, and
+    nothing -- with the reason -- otherwise."""
+    if recipe_out is None or recipe_out.status == "no-hunks":
+        if item.base is None:
+            return None, "no common ancestor, so there is no merged file to read"
+        from . import basefind
+        lines, rc = basefind.merge_file_diff3(
+            basefind.lines_of(item.live.read_bytes()), basefind.lines_of(item.base.read_bytes()),
+            basefind.lines_of(item.repo.read_bytes()), workdir)
+        if rc == 255:
+            return None, "git merge-file failed on the three inputs"
+        return "\n".join(lines).encode("utf-8"), ""
+    if recipe_out.status == "proposed" and recipe_out.proposal is not None:
+        return recipe_out.proposal.read_bytes(), ""
+    return None, (f"the recipe's result was {recipe_out.status}, so there is no merged file to read "
+                  f"-- resolve that first")
+
+
+def _deep_tripwire(v: ValidationResult) -> tuple[ValidationResult, list[str]]:
+    """Split a deep variant's validation into what still gates and what is
+    only reported: the loss, invented-content and duplication checks are
+    the tripwire (a deep answer may write text); everything else stands."""
+    trip = [f for f in v.failures
+            if f.startswith(_LOSS_PREFIX) or "appear in neither side nor the base" in f
+            or "content was duplicated" in f]
+    keep = [f for f in v.failures if f not in trip]
+    return ValidationResult(failures=keep, survived=dict(v.survived), honoured=dict(v.honoured),
+                            lost=dict(v.lost)), trip
 
 
 def _base_kind(item: MergeItem) -> str:

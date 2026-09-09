@@ -4,6 +4,15 @@ All notable changes to dazzle-claude-config (ccs) are documented here. Format fo
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-09-09
+
+### Added
+- **`ccs merge --ai claude,deep`: the deep step, in the merge.** `--ai` now takes a plan of steps, in order: `claude,deep` runs the surface merge on claude and hands its result to the deep step on the same backend; `deep` alone runs on the configured backend and inserts the surface merge before itself; `deep:lmstudio` names its own. **`--ai-scope hunk|file|neighbours|project`** says how far the deep step may edit -- the changed regions and their surrounding code by default. Every answer is its own file beside your result (`<file>.merged-ai`, then `.merged-ai.1`, ...) with its own guarantees line in the report -- the surface merge's protections and the deep step's, which differ on purpose -- and nothing is chosen for you: the choice is made the way it always was, by putting the bytes you want in `.merged` and running `--accept`. A deep answer that reached beyond your scope is not kept, and the report lists the edits it would have made; a deep step that changed nothing says so and is not pending work. `ccs diff <file> --ai --variant 1` opens the deep answer beside yours. When `.merged` holds a deep answer, `--accept` asks with that answer's guarantees and records your choice only on a yes; for such an answer the loss and invented-content checks are printed as a warning rather than refusing, because it may legitimately contain text neither side wrote, while conflict markers, a regressed pattern and a credential shape still refuse. The docs: `docs/ai-merge.md`.
+
+### Changed
+- **The report carries a backend's readiness warning.** A backend's "yes, but" from its readiness check -- an oversized context window on a local server, a key file readable by others -- is printed on one `backend:` line under the answer it applies to, and beside an `ai failed` line, where a timeout is usually that warning coming true. Before this only `ccs doctor` said it. Closes #62.
+- **The identity a record and a cache key hold carries no empty fields.** `cli command=claude --output-format text ...` and `openai_compat endpoint=http://127.0.0.1:1234/v1 extra=...` instead of `cli|||claude ...` with its unexplained empties. Answers cached before this version are recomputed once, the same invalidation as 0.6.3's. Closes #63.
+
 ## [0.6.4] - 2026-09-09
 
 ### Added
@@ -473,7 +482,8 @@ Fixes both issues 0.3.0 shipped as known, plus five more found by running the to
 - Console scripts `ccs` and `dazzle-claude-config`; stdlib-only, Python 3.10+
 - 53 automated tests + tester-agent exploratory report + human test checklist (`tests/checklists/v0.1.0__Phase1__collect-apply-status-diff.md`)
 
-[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.4...HEAD
+[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.5...HEAD
+[0.6.5]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.1...v0.6.2

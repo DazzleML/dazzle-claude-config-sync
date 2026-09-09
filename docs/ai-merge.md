@@ -11,7 +11,10 @@ ccs merge skills/think/SKILL.md --ai ollama          # the same, at Ollama's add
 ccs merge skills/think/SKILL.md --ai openrouter      # a hosted provider; the key from OPENROUTER_API_KEY or ~/claude/keys/openrouter.env
 ccs merge skills/think/SKILL.md --ai prompt-only     # write the prompt; take it anywhere
 ccs merge skills/think/SKILL.md --ai --ai-response answer.json   # apply an answer you carried back
+ccs merge skills/think/SKILL.md --ai claude,deep     # the recipe, then the deep step on the same backend
+ccs merge skills/think/SKILL.md --ai deep:lmstudio --ai-scope file   # the deep step on a local model, allowed the whole file
 ccs diff  skills/think/SKILL.md --ai                 # the proposal beside your result, in your diff tool
+ccs diff  skills/think/SKILL.md --ai --variant 1     # the deep step's answer beside your result
 ```
 
 ## What happens, in order
@@ -31,6 +34,19 @@ ccs diff  skills/think/SKILL.md --ai                 # the proposal beside your 
 ## What the model can and cannot do
 
 It can select complete lines from a hunk's three panes and order them as an interleaving. It cannot write a line, cannot reorder within a side, cannot drop a line without a rule you wrote, and never chooses the base. That is by construction: the answer is ids, not text, and ccs does the assembly.
+
+That is the **recipe**, and it is deliberately shallow: everything git merged on its own is never shown to the model. The case it cannot see is the one where two people's changes each look fine and are wrong together -- one person changes what a function returns, another changes the code that calls it, git merges the two cleanly, and the result is wrong without an error. For that there is a second pass.
+
+## The deep step: `--ai claude,deep`
+
+`--ai` takes a plan: one or more steps, in order. `claude,deep` runs the recipe on claude and hands its result to the **deep step** on the same backend; `deep` alone runs on the configured backend and inserts the recipe before itself; `deep:lmstudio` names its own. The deep step reads the whole merged file -- the recipe's proposal, or git's clean merge when there was nothing to decide -- for meaning, and it may write text. So its guarantee is about *where*, not *what*:
+
+- **It works in a disposable copy.** A worktree of the payload checkout beside a copy of the live component, with the merged file written in. A backend with tools (`claude`, `codex`) edits there, under the CLI's own sandbox flag; a backend without them (`lmstudio`, `ollama`, `openai`, `openrouter`) is shown the file and the two changes and answers with a diff, which git applies to a copy. The real checkout and the real live tree are hashed before and after the call; a backend that changed either has its answer discarded, and the report names the file.
+- **It may edit only as far as you allow.** `--ai-scope hunk` (the default) is the changed regions and their surrounding code -- the section under the same heading, the enclosing function or block; `file` is this file only; `neighbours` is this file and its neighbouring files (the same component's files, the files the payload's commit touched with it, the files that name it); `project` is anything under the checkout or this component. Every edit the model made is placed on that ladder. Within the scope you allowed, its answer is kept as a numbered variant, `<file>.merged-ai.1`, beside the recipe's `<file>.merged-ai`; beyond it the answer is **not kept**, and the report lists the edits it would have made so you can see what a wider scope would buy. A backend without tools can reach `file` but not `neighbours` or `project`, and says so before any call.
+- **An unchanged file is a correct answer.** A deep step that changes nothing says `nothing to change` and is not pending work.
+- **No automatic winner.** Every answer has its own line in the report and its own guarantees line: the recipe's says every line came from one of the three sides and git's clean regions were never sent; the deep step's says this variant may contain text no side wrote, where the ladder allowed edits and where they landed. The record beside your file holds them all, and which one becomes the file is your decision, made the way it always was: put the bytes you want in `.merged` and run `--accept`. `ccs diff <file> --ai --variant 1` opens the deep answer beside yours.
+- **`--accept` asks with the right guarantees.** A `.merged` that equals a deep variant is read as the AI's, not yours, and the question names that answer and prints its guarantees line; the record's choice moves to it only on a yes. For a deep variant the usual loss check runs as a tripwire -- printed, never refusing -- because such a variant may legitimately hold text neither side wrote; conflict markers, a regressed pattern and a credential shape still refuse.
+- **Nothing is cached.** A run that edited files in a copy is not reproducible from its inputs the way a line selection is, and asking twice means asking twice.
 
 One consequence you will meet on real configuration: this house writes one line per paragraph, so a hunk is often one long line against another. Line selection can only take one side whole there. ccs says so, and prints what each side alone has:
 
@@ -68,6 +84,11 @@ The vocabulary is the merge verb's: **staged** means in the workspace, nothing i
 | `staged <file> -- the AI's proposal, unchanged since <date>; nothing installed` | `.merged` is still exactly the copy |
 | `staged <file> -- the AI's proposal from <date>; your live file has changed since` | a side moved after the proposal was made; re-run `--ai` |
 | `    hunk 3: dropped under R2 -- <the line>` | a rule of yours authorised that line's removal; it is named so no drop is silent |
+| `    guarantees: every line came from one of the three sides ...` | what protects this answer; a deep step's variant carries a different line (`this variant may contain text no side wrote; the ladder allowed edits in ...`) |
+| `    backend: loaded with a 200,192-token context; ...` | the backend's own "yes, but" from its readiness check, under the answer it applies to (also beside an `ai failed` line, where a timeout is usually that warning coming true); nothing is printed when there is none |
+| `staged <file> -- the AI's answer <file>.merged-ai.1 (deep via claude; needed hunk, hunk allowed); nothing installed` | the deep step's variant, kept because every edit landed within the scope you allowed; `files touched`, its guarantees line, its summary and its edits with reasons follow |
+| `ai <file> -- nothing to change (deep via claude): the merged file stands` | the deep step found the two changes consistent; not pending work |
+| `NOT KEPT <file> -- the model's edits needed neighbours scope and hunk was allowed -- nothing kept; ...` | the deep step reached beyond the scope (or changed a real file); the edits it would have made follow, and the file is pending |
 | `staged <file> -- yours; differs from the AI's proposal (3 lines); nothing installed` | the file is yours -- you edited the copy, or you had already resolved it before asking -- and `ccs diff <file> --ai` shows the difference |
 | `NOT PROPOSED <file> -- the answer failed the check` | the reasons follow; the assembled file, if any, is left for your eyes |
 | `prompt written <file> -- <path>` | prompt-only: answer it and re-run, or pass `--ai-response` |
@@ -123,4 +144,4 @@ A second proposal file per backend (the record carries which backend made the on
 
 **Which backends have been asked for real.** The pipeline is proven against fakes for every transport, and against a golden set of nine conflict shapes in canned mode (`tests/test_golden_ai_merge.py`); running that set live against a preset (`CCS_GOLDEN_AI=lmstudio`) is how a backend earns its place, and the matrix it prints is the record. As of this pass, every preset that is a model has matched all nine fixtures live: claude (Opus 5), codex (its default model), lmstudio (a 27B Qwen) and openrouter (gemini-2.5-flash, nine answers in nine seconds of model time, on the order of a cent). The local model answered the nine in twenty seconds on one GPU, and its one miss on the first pass was the prompt's wording, not the model's judgement -- which is the measurement the golden set exists to take.
 
-**Asking several backends in one run** (`--ai a,b`, issue #58) is not built; the record is already shaped for it (N answers, one chosen), so building it later migrates nothing in your workspace.
+**Two line-selection answers in one run** (`--ai claude,codex`, issue #58) is not built and is refused as such; `--ai claude,deep` is the plan grammar that exists, and the record is already shaped for more (N answers, one chosen), so building the rest later migrates nothing in your workspace.

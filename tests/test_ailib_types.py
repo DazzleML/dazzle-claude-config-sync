@@ -47,6 +47,14 @@ def test_identity_changes_with_the_things_that_change_the_answer():
     assert base.identity() != base.with_(transport="cli").identity()
 
 
+def test_identity_normalises_the_endpoints_trailing_slash():
+    """v0.6.5 sweep, survivor M20: one server, one identity -- and one cache
+    key. `http://h/v1/` and `http://h/v1` are the same address."""
+    a = Spec("openai_compat", endpoint="http://h/v1")
+    assert a.identity() == a.with_(endpoint="http://h/v1/").identity()
+    assert a.identity() != a.with_(endpoint="http://h/v2").identity()
+
+
 def test_identity_ignores_the_things_that_do_not():
     """A timeout, a hint, an output directory and the executable's resolved
     path change nothing about which model answers -- and a reinstall must

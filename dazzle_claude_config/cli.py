@@ -1079,6 +1079,13 @@ day to day, once it is installed:
                                  "inputs were answered before (the answer is cached)")
             sp.add_argument("--ai-verbose", action="store_true",
                             help="with --ai: stream the backend's output as it arrives")
+            sp.add_argument("--ai-scope", default="hunk", choices=("hunk", "file", "neighbours", "project"),
+                            help="with --ai ...,deep: how far the deep step may edit -- hunk "
+                                 "(the changed regions and their surrounding code; default), "
+                                 "file (this file only), neighbours (this file and its "
+                                 "neighbouring files), project (anything under the checkout or "
+                                 "this component). An answer that reached further is not kept; "
+                                 "the edits it would have made are shown")
         if verb in ("merge", "diff"):
             sp.add_argument("--base-file", default=None, metavar="FILE",
                             help="use FILE as the common ancestor instead of "
@@ -1121,6 +1128,9 @@ day to day, once it is installed:
             sp.add_argument("--ai", action="store_true",
                             help="with a path: open the AI's proposal (<file>.merged-ai) "
                                  "beside your result (<file>.merged) in your diff tool")
+            sp.add_argument("--variant", type=int, default=None, metavar="N",
+                            help="with --ai: open the AI's answer N (<file>.merged-ai.N -- a "
+                                 "deep step's variant) instead of the first")
             sp.add_argument("--difftool", nargs="?", const=2, type=int, choices=(2, 3),
                             default=None, metavar="{2,3}",
                             help="open the file in your diff tool instead of printing: "
@@ -1590,10 +1600,11 @@ def _launch_file_difftool(all_diffs, wanted: str, tool: str | None, *, supplied=
 
 
 def _launch_ai_diff(all_diffs, wanted: str, tool: str | None, *, checkout, roots,
-                    manifest, box_tags=frozenset()) -> int:
-    """`ccs diff <path> --ai`: the AI's proposal beside the person's result,
-    in the two-pane tool. With two files on disk the person must be able
-    to SEE what differs before `--accept` installs theirs -- and it installs
+                    manifest, box_tags=frozenset(), variant: int | None = None) -> int:
+    """`ccs diff <path> --ai [--variant N]`: the AI's proposal -- or its
+    answer N, a deep step's variant -- beside the person's result, in the
+    two-pane tool. With two files on disk the person must be able to SEE
+    what differs before `--accept` installs theirs -- and it installs
     theirs, never the proposal."""
     from . import airecord
     want = wanted.replace(chr(92), "/").strip("/")
@@ -1610,10 +1621,15 @@ def _launch_ai_diff(all_diffs, wanted: str, tool: str | None, *, checkout, roots
     lv, rp, target, repo_label = found
     ws = merge.workspace_for(roots)
     merged = ws / (target.replace("/", "__").replace(chr(92), "__") + ".merged")
-    proposal = airecord.proposal_path(merged)
+    proposal = airecord.proposal_path(merged, variant or 0)
     if not proposal.is_file():
-        print(c("yellow", f"no AI proposal for {target}")
-              + c("dim", f" -- ccs merge {target} --ai writes one beside your result"))
+        if variant:
+            print(c("yellow", f"no AI answer {variant} for {target}")
+                  + c("dim", f" -- the record beside {merged.name} lists the answers; "
+                             f"ccs diff {target} --ai opens the first"))
+        else:
+            print(c("yellow", f"no AI proposal for {target}")
+                  + c("dim", f" -- ccs merge {target} --ai writes one beside your result"))
         return EXIT_CLEAN
     yours = merged if merged.is_file() else lv
     name = merge.resolve_difftool(tool)
@@ -1624,21 +1640,80 @@ def _launch_ai_diff(all_diffs, wanted: str, tool: str | None, *, checkout, roots
     return EXIT_CLEAN
 
 
+def parse_plan(token: str, *, configured: str) -> list:
+    """`--ai <step>[,<step>...]` as a list of `aistep.AiStep` (U5, #64).
+
+    `auto` (the bare flag) is the recipe on the configured backend. A
+    preset name is the recipe on it. `deep` is the deep step on the
+    configured backend, `deep:<preset>` on that one -- and a deep step with
+    no recipe before it inserts one on the same backend, because the deep
+    step reads the recipe's result (or git's clean merge) for meaning:
+    `claude,deep` is the recipe first, its result to the deep step, the
+    maintainer's reading confirmed at the design gate. prompt-only can be
+    a recipe step but never a deep one (it cannot read a file). One recipe
+    step per plan: two line-selection answers (`--ai a,b`, #58) are not
+    built yet. Raises ValueError with the sentence to print."""
+    from . import ailib, aistep
+    names = ailib.names()
+    if token == "auto":
+        return [aistep.AiStep("recipe", configured)]
+    steps: list = []
+    for raw in token.split(","):
+        part = raw.strip()
+        if not part:
+            raise ValueError(f"empty step in --ai {token!r}")
+        if part == "deep" or part.startswith("deep:"):
+            recipe = next((s.backend for s in steps if s.kind == "recipe"), None)
+            # a bare `deep` runs on the recipe's backend when one came before
+            # it (`claude,deep` is one backend, two passes), else on the
+            # configured one
+            backend = part[len("deep:"):] if part.startswith("deep:") else (recipe or configured)
+            if backend == aistep.PROMPT_ONLY:
+                raise ValueError("deep needs a backend: deep:<preset> on the command line, or "
+                                 "ai_merge_backend in your config -- prompt-only writes a prompt and "
+                                 "cannot read a file for meaning")
+            if backend not in names:
+                raise ValueError(f"unknown AI backend {backend!r} -- one of: {', '.join(names)}")
+            if not any(s.kind == "recipe" for s in steps):
+                steps.append(aistep.AiStep("recipe", backend))
+            steps.append(aistep.AiStep("deep", backend))
+            continue
+        if part not in names:
+            raise ValueError(f"unknown AI backend {part!r} -- one of: {', '.join(names)}")
+        if any(s.kind == "recipe" for s in steps):
+            raise ValueError("one recipe step per plan -- two line-selection answers (--ai a,b) are not "
+                             "built yet; --ai a,deep is")
+        steps.append(aistep.AiStep("recipe", part))
+    return steps
+
+
 def _ai_options(args, roots):
     """The `--ai` flags and the config key, as one object for merge.run --
     or None after printing why not."""
-    from . import ailib, airules, aistep
+    from . import ailib, airules, airung, aistep
     cfg = userconfig.load(roots["USER_CLAUDE"])
-    backend = args.ai if args.ai != "auto" else (cfg.get("ai_merge_backend") or aistep.PROMPT_ONLY)
-    names = ailib.names()
-    if backend not in names:
-        print(c("red", f"unknown AI backend {backend!r}")
-              + c("dim", f" -- one of: {', '.join(names)}"))
+    configured = cfg.get("ai_merge_backend") or aistep.PROMPT_ONLY
+    try:
+        steps = parse_plan(args.ai, configured=configured)
+    except ValueError as e:
+        print(c("red", str(e)))
         return None
+    scope = airung.rung_of(getattr(args, "ai_scope", None) or "hunk")
+    if any(s.kind == "deep" for s in steps):
+        # The plan, before the first call: what runs, in what order, and how
+        # far the deep step may reach.
+        print(c("dim", "steps: " + ", ".join(f"{s.backend} (recipe)" if s.kind == "recipe"
+                                             else f"deep via {s.backend}" for s in steps)
+                       + f" -- scope {airung.token_of(scope)}"))
     user = roots["USER_CLAUDE"]
     return aistep.AiOptions(
         rules_dir=airules.rules_dir(user), prompts_dir=airules.prompts_dir(user),
-        cache_dir=user / "cache" / "ccs-ai", backend=backend,
+        # `steps` is authoritative: each names its own backend, and `merge.run`
+        # hands every step options carrying that backend. `backend` here is the
+        # pre-plan fallback (`AiOptions.plan()` for a caller that built no
+        # steps), kept as the FIRST step's so the two can never disagree.
+        cache_dir=user / "cache" / "ccs-ai", backend=steps[0].backend,
+        steps=tuple(steps), scope=scope,
         refresh=bool(getattr(args, "ai_refresh", False)),
         verbose=bool(getattr(args, "ai_verbose", False)),
         response=pathlib.Path(args.ai_response) if getattr(args, "ai_response", None) else None,
@@ -1694,6 +1769,14 @@ def _print_ai_report(r, args) -> None:
                 _who = out.model_used or "(model not reported)"
                 _held = ", ".join(out.honoured) if out.honoured else "nothing enforced"
                 print(c("dim", f"    answered by {_who} via {out.backend_identity}; {_held}"))
+            # C7 (#64): every answer says what protects it. The recipe's
+            # protections are structural; the deep step's line, below, is
+            # different on purpose.
+            print(c("dim", "    guarantees: every line came from one of the three sides (the check "
+                           "refused anything else); git's clean regions were never sent; your diff "
+                           "and --accept are the gate"))
+            if getattr(out, "warning", ""):
+                print(c("dim", f"    backend: {out.warning}"))         # #62: "yes, but" from the probe
             for n, rules, why in out.rationales:
                 cite = f" [{', '.join(rules)}]" if rules else ""
                 print(c("dim", f"    hunk {n}: {why}{cite}"))
@@ -1729,6 +1812,43 @@ def _print_ai_report(r, args) -> None:
             print(f"{c('red', 'ai failed')} {label} {c('dim', '-- ' + _head)}")
             if (len(_first) > 1 or _cut) and getattr(out, "error_path", None):
                 print(c("dim", f"    the backend's full output: {out.error_path}"))
+            if getattr(out, "warning", ""):
+                # #62: a timeout is often the warning's prediction coming true
+                print(c("dim", f"    backend: {out.warning}"))
+        elif out.status == "deep-proposed":
+            # The deep step's answer: a numbered variant beside the others,
+            # with its own guarantees line (C7) -- never copied, never chosen.
+            from . import airung
+            name = out.variant.name if out.variant is not None else "(variant)"
+            print(f"{c('green', 'staged')} {label} "
+                  + c("dim", f"-- the AI's answer {name} (deep via {out.backend}; needed "
+                             f"{airung.token_of(out.scope_needed)}, "
+                             f"{airung.token_of(out.scope_allowed)} allowed); nothing installed"))
+            print(c("dim", f"    files touched: {len(out.touched)}"))
+            print(c("dim", f"    {out.guarantees}"))
+            if out.summary:
+                print(c("dim", f"    {out.summary}"))
+            for _path, region, rung, reason in out.edits:
+                print(c("dim", f"    {region or _path} (rung {rung}): {reason or '(no reason given)'}"))
+            for line in out.tripwire:
+                print("    " + c("yellow", f"tripwire: {line}"))
+            if out.warning:
+                print(c("dim", f"    backend: {out.warning}"))
+            print(c("dim", f"    ccs diff {label} --ai --variant {name.rsplit('.', 1)[-1]} opens it beside yours"))
+        elif out.status == "deep-empty":
+            print(c("dim", f"ai  {label} -- nothing to change (deep via {out.backend}): the merged file stands"))
+            if out.warning:
+                print(c("dim", f"    backend: {out.warning}"))
+        elif out.status in ("deep-failed", "deep-escaped"):
+            print(f"{c('bold_red', 'NOT KEPT')} {label} "
+                  + c("dim", f"-- {out.error} (deep via {out.backend})"))
+            for line in out.reports:
+                print("    " + c("yellow", line))
+            for e in out.escapes:
+                print("    " + c("red", f"changed outside the sandbox: {e}"))
+        elif out.status == "deep-skipped":
+            print(f"{c('yellow', 'ai skipped')} {label} "
+                  + c("dim", f"-- {out.error} (deep via {out.backend})"))
     for item in r.ai_unchanged:
         if item in r.ai_copied:
             continue                          # said above, on the proposal's own line
@@ -1749,6 +1869,15 @@ def _print_ai_report(r, args) -> None:
               + c("dim", f"-- yours; differs from the AI's proposal ({_n_lines(n)}); nothing installed"))
         print("    " + c("bold", f"ccs diff {item.label} --ai") + c("dim", " opens them side by side; ")
               + c("bold", "--accept installs YOURS") + c("dim", ", not the proposal"))
+    for item, lines in getattr(r, "ai_tripwire", []):
+        # C8 (#64): the checks a deep variant is NOT gated by, said out loud.
+        # Recorded and printed, never a refusal -- a deep answer may hold text
+        # neither side wrote, which is what these checks look for.
+        print(f"{c('yellow', 'tripwire')} {item.label} "
+              + c("dim", "-- this result is the AI's and may contain text no side wrote, so these "
+                         "checks did not refuse it:"))
+        for ln in lines:
+            print("    " + c("yellow", ln))
     for item in r.ai_declined:
         print(f"{c('yellow', 'not installed')} {item.label} "
               + c("dim", "-- the AI's proposal was not confirmed as reviewed; "
@@ -3154,7 +3283,7 @@ def main(argv: list[str] | None = None) -> int:
                 if getattr(args, "ai", False):
                     return _launch_ai_diff(all_diffs, wanted, getattr(args, "tool", None),
                                            checkout=checkout, roots=roots, manifest=manifest,
-                                           box_tags=box.tags)
+                                           box_tags=box.tags, variant=getattr(args, "variant", None))
                 ways = getattr(args, 'difftool', None)
                 if ways:
                     return _launch_file_difftool(all_diffs, wanted,
