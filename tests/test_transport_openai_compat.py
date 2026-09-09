@@ -340,6 +340,163 @@ def test_a_keyed_remote_without_the_key_in_the_environment_probes_to_a_sentence(
     assert "POC_KEY" in ready.reason and "not set" in ready.reason
 
 
+# -- the credential from a file (K5, 2026-09-09) -----------------------------------
+#
+# The library's order is fixed: a file named on purpose, then the environment,
+# then fallback files. The value is read at request time, put in one header,
+# and appears in no identity, sentence or repr. Each test below asserts what
+# the FAKE SERVER saw (`_Fake.seen_auth`), never prints a value.
+
+def _keyfile(tmp_path, name="openrouter.env", text="POC_KEY=from-the-file\n"):
+    p = tmp_path / "keys" / name
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text, encoding="utf-8")
+    return p
+
+
+def _remote(url, **kw):
+    return Spec("openai_compat", name="remote", endpoint=url, model="qwen/qwen3.8-35b",
+                credential_env="POC_KEY", **kw)
+
+
+def test_a_file_named_on_purpose_wins_over_the_environment(server, tmp_path, monkeypatch):
+    _Fake.token = "from-the-file"
+    _Fake.native = False
+    monkeypatch.setenv("POC_KEY", "from-the-environment")
+    kf = _keyfile(tmp_path)
+    b = build(_remote(server.url, credential_file=str(kf)))
+    assert b.probe().ok is True
+    assert _ask(b).ok and _Fake.seen_auth == "Bearer from-the-file"
+
+
+def test_a_fallback_file_is_read_only_when_the_environment_is_empty(server, tmp_path, monkeypatch):
+    kf = _keyfile(tmp_path)
+    spec = _remote(server.url, credential_fallbacks=(str(kf),))
+    _Fake.native = False
+    # the environment has the key: the fallback is not consulted
+    _Fake.token = "from-the-environment"
+    monkeypatch.setenv("POC_KEY", "from-the-environment")
+    assert _ask(build(spec)).ok and _Fake.seen_auth == "Bearer from-the-environment"
+    # the environment is empty: the fallback supplies it
+    _Fake.token = "from-the-file"
+    monkeypatch.delenv("POC_KEY")
+    assert _ask(build(spec)).ok and _Fake.seen_auth == "Bearer from-the-file"
+
+
+def test_the_first_fallback_that_has_the_line_wins(server, tmp_path, monkeypatch):
+    _Fake.token = "second"
+    _Fake.native = False
+    monkeypatch.delenv("POC_KEY", raising=False)
+    first = _keyfile(tmp_path, "first.env", "OTHER_KEY=not-this-one\n")
+    second = _keyfile(tmp_path, "second.env", "POC_KEY=second\n")
+    b = build(_remote(server.url, credential_fallbacks=(str(first), str(second))))
+    assert _ask(b).ok and _Fake.seen_auth == "Bearer second"
+
+
+def test_the_missing_key_sentence_names_the_variable_and_every_file(server, tmp_path, monkeypatch):
+    """A person who sees this knows where to put the key: the variable, the
+    file that is not there, and the file that is there without the line."""
+    monkeypatch.delenv("POC_KEY", raising=False)
+    absent = tmp_path / "keys" / "openrouter.env"
+    present = _keyfile(tmp_path, "other.env", "SOMETHING_ELSE=x\n")
+    ready = build(_remote(server.url, credential_file=str(present),
+                          credential_fallbacks=(str(absent),))).probe()
+    assert ready.ok is False
+    assert "POC_KEY" in ready.reason and "not set" in ready.reason          # what the doctor test pins
+    assert str(absent) in ready.reason and "does not exist" in ready.reason
+    assert str(present) in ready.reason and "has no POC_KEY line" in ready.reason
+    assert "one of them" in ready.reason
+    assert _Fake.requests == 0                                              # refused before any request
+
+
+def test_without_any_file_the_missing_key_sentence_is_unchanged(server, monkeypatch):
+    monkeypatch.delenv("POC_KEY", raising=False)
+    ready = build(_remote(server.url)).probe()
+    assert ready.reason == "POC_KEY is not set in the environment -- remote needs a key there"
+
+
+def test_the_file_value_never_leaks_and_the_file_is_named_in_the_identity(server, tmp_path, monkeypatch):
+    _Fake.token = "s3cr3t-from-file"
+    _Fake.native = False
+    monkeypatch.delenv("POC_KEY", raising=False)
+    kf = _keyfile(tmp_path, text="POC_KEY=s3cr3t-from-file\n")
+    spec = _remote(server.url, credential_fallbacks=(str(kf),))
+    b = build(spec)
+    ready = b.probe()
+    assert ready.ok is True and _ask(b).ok
+    for where, text in (("identity", b.identity), ("repr", repr(spec)),
+                        ("spec", json.dumps(spec.__dict__)), ("reason", ready.reason),
+                        ("warning", ready.warning)):
+        assert "s3cr3t" not in text, where
+    assert "keyfile:openrouter.env" in b.identity
+    assert "key:POC_KEY" in b.identity
+
+
+def test_probe_says_where_the_key_came_from(server, tmp_path, monkeypatch):
+    _Fake.native = False
+    _Fake.token = "v"
+    monkeypatch.setenv("POC_KEY", "v")
+    assert "key from POC_KEY" in build(_remote(server.url)).probe().reason
+    monkeypatch.delenv("POC_KEY")
+    kf = _keyfile(tmp_path, text="POC_KEY=v\n")
+    reason = build(_remote(server.url, credential_fallbacks=(str(kf),))).probe().reason
+    assert f"key from {kf}" in reason and "v\n" not in reason
+    # a local server with no credential says nothing about a key
+    _Fake.token = None
+    assert "key from" not in build(_spec(server.url)).probe().reason
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("POC_KEY=plain\n", "plain"),
+    ("POC_KEY=crlf\r\n", "crlf"),                                   # CRLF
+    ("﻿POC_KEY=bom\n", "bom"),                                 # a BOM from a Windows editor
+    ('POC_KEY="double quoted"\n', "double quoted"),
+    ("POC_KEY='single quoted'\n", "single quoted"),
+    ("export POC_KEY=exported\n", "exported"),                      # a sourceable file
+    ("# the key\n\nOTHER=x\nPOC_KEY = spaced \n", "spaced"),         # comments, blanks, other lines, spaces
+    ("bare-value-only\n", "bare-value-only"),                       # one line, no '=': the value itself
+    ("# a comment\nbare-with-comment\n", "bare-with-comment"),
+    ("POC_KEY=\n", ""),                                             # an empty value is absent
+    ('POC_KEY=""\n', ""),                                           # ...and so is an empty quoted one (survivor M15)
+    ("POC_KEY=''\n", ""),
+    ("OTHER=x\nANOTHER=y\n", ""),                                   # several lines, none the name: no guess
+    ("first-bare\nsecond-bare\n", ""),                              # two bare lines: no guess either (survivor M16)
+    ("", ""),
+])
+def test_the_key_file_formats_that_read(tmp_path, text, expected):
+    from dazzle_claude_config._vendor.ailib.transports.openai_compat import _read_key_file
+    p = tmp_path / "k.env"
+    p.write_bytes(text.encode("utf-8"))
+    assert _read_key_file(str(p), "POC_KEY") == expected
+
+
+def test_a_missing_or_oversized_key_file_reads_as_nothing(tmp_path):
+    from dazzle_claude_config._vendor.ailib.transports import openai_compat as t
+    assert t._read_key_file(str(tmp_path / "nope.env"), "POC_KEY") == ""
+    big = tmp_path / "big.env"
+    big.write_text("#" * (t.KEY_FILE_CAP + 10) + "\nPOC_KEY=after-the-cap\n", encoding="utf-8")
+    assert t._read_key_file(str(big), "POC_KEY") == ""              # not read past the cap
+
+
+def test_a_loose_mode_is_group_or_other_bits():
+    from dazzle_claude_config._vendor.ailib.transports.openai_compat import _loose_mode
+    assert _loose_mode(0o600) is False and _loose_mode(0o400) is False
+    assert _loose_mode(0o640) is True and _loose_mode(0o644) is True and _loose_mode(0o604) is True
+
+
+@pytest.mark.skipif(os.name != "posix", reason="a mode is a POSIX thing; Windows ACLs are not one")
+def test_on_posix_a_readable_by_others_key_file_is_a_warning(server, tmp_path, monkeypatch):
+    _Fake.native = False
+    _Fake.token = "v"
+    monkeypatch.delenv("POC_KEY", raising=False)
+    kf = _keyfile(tmp_path, text="POC_KEY=v\n")
+    kf.chmod(0o644)
+    ready = build(_remote(server.url, credential_fallbacks=(str(kf),))).probe()
+    assert ready.ok and "readable by others" in ready.warning and "chmod 600" in ready.warning
+    kf.chmod(0o600)
+    assert build(_remote(server.url, credential_fallbacks=(str(kf),))).probe().warning == ""
+
+
 def test_the_same_transport_serves_local_and_remote_with_different_specs(server, monkeypatch):
     """One code path; two specs. The point of the taxonomy."""
     _Fake.token = None

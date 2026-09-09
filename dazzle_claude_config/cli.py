@@ -786,10 +786,14 @@ def _doctor(args) -> int:
             # whether it is ready, and prints what it says -- a CLI says
             # whether its executable was found, a server says what is loaded
             # and how big its window is, a hosted provider says which
-            # variable it looked in for its key.
+            # variable and which files it looked in for its key, and where
+            # it found one -- the same route a merge takes, because both
+            # go through spec_for with the same overrides.
             _b = _ailib.build(_ailib.spec_for(_backend, endpoint=cfg.get("ai_merge_endpoint"),
                                               model=cfg.get("ai_merge_model"),
-                                              api_key_env=cfg.get("ai_merge_api_key_env")))
+                                              api_key_env=cfg.get("ai_merge_api_key_env"),
+                                              api_key_file=cfg.get("ai_merge_api_key_file"),
+                                              keys_dir=_ailib.keys_dir(user_claude)))
             _ready = _b.probe()
             _caps = _b.capabilities
             _where = ("your text stays on your network" if "data_stays_on_prem" in _caps
@@ -1640,7 +1644,9 @@ def _ai_options(args, roots):
         response=pathlib.Path(args.ai_response) if getattr(args, "ai_response", None) else None,
         endpoint=cfg.get("ai_merge_endpoint") or None,
         model=cfg.get("ai_merge_model") or None,
-        api_key_env=cfg.get("ai_merge_api_key_env") or None)
+        api_key_env=cfg.get("ai_merge_api_key_env") or None,
+        api_key_file=cfg.get("ai_merge_api_key_file") or None,
+        keys_dir=ailib.keys_dir(user))
 
 
 def _n_lines(n: int) -> str:
@@ -2661,6 +2667,11 @@ def main(argv: list[str] | None = None) -> int:
                 # lines in a non-triple-quoted f-string before 3.12 (PEP 701).
                 detail = f"-- looks like a credential (line {hit.line_no}: {hit.excerpt})"
                 print(f"{c('bold_red', 'REFUSED')} {hit.rel_path} {c('red', detail)}")
+            for rel in r.allowed_secrets:
+                # The path only, never a line of the file: the whole point of the
+                # entry's allowance is that this file holds a credential.
+                print(f"{c('yellow', 'allowed')} {rel} "
+                      f"{c('dim', '-- allow_secrets on this entry: not scanned for credentials')}")
             for rel in r.copied:
                 verb = "would copy" if args.dry_run else "copied"
                 print(f"{c('green', verb)}: {rel}")

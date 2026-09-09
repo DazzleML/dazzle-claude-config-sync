@@ -56,9 +56,12 @@ class AiOptions:
     """What the CLI decided; one parameter into ``merge.run``.
 
     `backend` is a preset name (or prompt-only, the mode that sends
-    nothing); `endpoint`, `model` and `api_key_env` override the preset's
-    own values and are applied by `ailib.build_backend`. Nothing here knows
-    which of them a given backend uses -- that is the preset's business.
+    nothing); `endpoint`, `model`, `api_key_env` and `api_key_file` override
+    the preset's own values and are applied by `ailib.build_backend`;
+    `keys_dir` is where a hosted preset's default key file lives
+    (`<keys_dir>/<preset>.env`, read only when the environment has nothing).
+    Nothing here knows which of them a given backend uses -- that is the
+    preset's business.
     """
     rules_dir: Path
     prompts_dir: Path
@@ -71,6 +74,8 @@ class AiOptions:
     endpoint: str | None = None    # override the preset's server address
     model: str | None = None       # override the preset's model
     api_key_env: str | None = None  # override the NAME of the credential's env var
+    api_key_file: str | None = None  # a key file read before the environment (the PATH)
+    keys_dir: Path | None = None   # `~/claude/keys`: the default key files, read after it
 
 
 @dataclass

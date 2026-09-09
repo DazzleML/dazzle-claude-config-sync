@@ -118,6 +118,40 @@ def test_config_overrides_endpoint_model_and_key_name():
     assert c.model == "opus-4"
 
 
+def test_spec_for_maps_the_read_order(tmp_path):
+    """K5 (2026-09-09). The library's order is fixed -- a named file, the
+    environment, fallback files -- and ccs maps its own onto it: an explicit
+    `ai_merge_api_key_file` is the named file (read first), the keys
+    directory's `<preset>.env` is the one fallback (read after the
+    environment), and a preset that names no credential variable gets no
+    fallback at all, so no file is ever looked for on its behalf."""
+    keys = tmp_path / "keys"
+    s = ailib.spec_for("openrouter", api_key_file="/keys/mine.env", keys_dir=keys)
+    assert s.credential_file == "/keys/mine.env"
+    assert s.credential_fallbacks == (str(keys / "openrouter.env"),)
+    assert s.credential_env == "OPENROUTER_API_KEY"                 # the line the file must carry
+    assert ailib.spec_for("openrouter").credential_fallbacks == ()  # no keys dir given: none
+    assert ailib.spec_for("openrouter").credential_file == ""
+    assert ailib.spec_for("lmstudio", keys_dir=keys).credential_fallbacks == ()   # needs no key
+    # an overridden variable name still earns the preset-named file, looked up by THAT name
+    s2 = ailib.spec_for("lmstudio", api_key_env="MY_KEY", keys_dir=keys)
+    assert s2.credential_env == "MY_KEY" and s2.credential_fallbacks == (str(keys / "lmstudio.env"),)
+    assert ailib.keys_dir(tmp_path) == keys
+
+
+def test_build_backend_carries_the_key_file_and_the_keys_dir(tmp_path):
+    from dazzle_claude_config import aistep
+    opts = aistep.AiOptions(rules_dir=tmp_path, prompts_dir=tmp_path, cache_dir=tmp_path,
+                            backend="openrouter", api_key_file="/keys/mine.env",
+                            keys_dir=tmp_path / "keys")
+    spec = ailib.build_backend(opts).spec
+    assert spec.credential_file == "/keys/mine.env"
+    assert spec.credential_fallbacks == (str(tmp_path / "keys" / "openrouter.env"),)
+    # the defaults stand for a constructor that never heard of them
+    bare = aistep.AiOptions(rules_dir=tmp_path, prompts_dir=tmp_path, cache_dir=tmp_path, backend="openrouter")
+    assert ailib.build_backend(bare).spec.credential_fallbacks == ()
+
+
 def test_a_preset_is_never_mutated_by_an_override():
     before = ailib.spec_for("lmstudio")
     ailib.spec_for("lmstudio", model="x")

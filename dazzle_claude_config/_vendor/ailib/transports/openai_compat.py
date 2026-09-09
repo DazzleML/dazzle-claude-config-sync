@@ -35,12 +35,26 @@ built (2026-09-04):
   model** (~385x between an oversized and a right-sized window on the same
   model). The probe reports the loaded window and warns above a threshold,
   so a caller can say so BEFORE a long job.
+
+**The credential** (2026-09-09) comes from one of three places, read in a
+fixed order at request time: a file the spec names on purpose
+(`credential_file`), then the environment variable it names
+(`credential_env`), then fallback files (`credential_fallbacks`) -- a
+tool's default key location, read only when the environment has nothing.
+The spec holds paths and a name, never the value; the value is read here,
+put in one header, and appears in no identity, record or sentence. A
+missing key is a sentence naming the variable AND the files, so a person
+knows where to put it. The file format is `NAME=value` lines (an `export `
+prefix, surrounding quotes, `#` comments and blank lines tolerated, CRLF and
+a BOM too); a file whose only non-comment line has no `=` is the value
+itself. On POSIX a key file readable by group or others earns a warning.
 """
 from __future__ import annotations
 
 import ipaddress
 import json
 import os
+import stat
 import time
 import urllib.error
 import urllib.request
@@ -51,6 +65,64 @@ from ..types import MODEL, ON_PREM, SCHEMA, Readiness, Request, Response, Spec
 #: How long to wait on a listing. If reachability takes longer than this the
 #: server is not in a state to work with.
 PROBE_TIMEOUT = 4
+
+#: A key file is a line or a handful; anything larger is not one, and is
+#: not read further.
+KEY_FILE_CAP = 65536
+
+
+def _unquote(value: str) -> str:
+    v = value.strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+        return v[1:-1]
+    return v
+
+
+def _read_key_file(path: str, name: str) -> str:
+    """The value of `name` in the key file at `path`, or "" when the file
+    does not exist, cannot be read, or has no such line.
+
+    `NAME=value` lines; `export NAME=value` too; surrounding quotes, `#`
+    comments and blank lines tolerated; a BOM and CRLF as well (`utf-8-sig`
+    and `splitlines`). When the file has exactly one non-comment line and
+    that line has no `=`, it is the value itself -- so a file that holds
+    only the token works, and a multi-line file without the name never
+    yields a guess. An empty value reads as absent."""
+    try:
+        with open(os.path.expanduser(path), encoding="utf-8-sig") as f:
+            text = f.read(KEY_FILE_CAP)
+    except (OSError, ValueError):
+        return ""
+    lines = [ln.strip() for ln in text.splitlines()]
+    lines = [ln for ln in lines if ln and not ln.startswith("#")]
+    for line in lines:
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
+        key, sep, value = line.partition("=")
+        if sep and name and key.strip() == name:
+            return _unquote(value)
+    if len(lines) == 1 and "=" not in lines[0]:
+        return _unquote(lines[0])
+    return ""
+
+
+def _loose_mode(mode: int) -> bool:
+    """Whether a file mode lets group or others read it."""
+    return bool(stat.S_IMODE(mode) & 0o077)
+
+
+def _permission_warning(path: str) -> str:
+    """POSIX only: a key file readable by group or others. Windows ACLs are
+    not a mode, so nothing is said there."""
+    if os.name != "posix":
+        return ""
+    try:
+        mode = os.stat(os.path.expanduser(path)).st_mode
+    except OSError:
+        return ""
+    if _loose_mode(mode):
+        return f"{path} is readable by others (mode {stat.S_IMODE(mode):o}); chmod 600 it"
+    return ""
 
 #: Above this many tokens the loaded window is far larger than a short
 #: structured task needs, and on a machine whose VRAM the KV cache fills it
@@ -80,12 +152,54 @@ class OpenAICompatible:
 
     # -- plumbing ----------------------------------------------------------------
 
+    @staticmethod
+    def _credential(spec: Spec) -> tuple[str, str]:
+        """(the bearer token, where it came from) -- ("", "") when there is
+        none. The order is fixed: the file named on purpose, then the
+        environment, then the fallback files. The source is a path or the
+        variable's name, never the value, so a probe may print it."""
+        name = spec.credential_env
+        if spec.credential_file:
+            value = _read_key_file(spec.credential_file, name)
+            if value:
+                return value, spec.credential_file
+        if name:
+            value = os.environ.get(name, "")
+            if value:
+                return value, name
+        for path in spec.credential_fallbacks:
+            value = _read_key_file(path, name)
+            if value:
+                return value, path
+        return "", ""
+
+    @staticmethod
+    def _missing_key(spec: Spec) -> str:
+        """The sentence for a spec that names a credential and has none:
+        the variable and every file, each with why it gave nothing."""
+        who = spec.name or spec.endpoint.rstrip("/")
+        name = spec.credential_env
+        files = [p for p in (spec.credential_file, *spec.credential_fallbacks) if p]
+        if not files:
+            return f"{name} is not set in the environment -- {who} needs a key there"
+        why = []
+        for p in files:
+            if os.path.isfile(os.path.expanduser(p)):
+                why.append(f"{p} has no {name} line" if name else f"{p} is empty")
+            else:
+                why.append(f"{p} does not exist")
+        if not name:
+            return f"{' and '.join(why)} -- {who} needs a key there"
+        return (f"{name} is not set in the environment and {' and '.join(why)} -- "
+                f"{who} needs a key in one of them")
+
     def _headers(self, spec: Spec, *, post: bool = False) -> dict[str, str]:
         h = {"Accept": "application/json"}
         if post:
             h["Content-Type"] = "application/json"
-        if spec.credential_env:
-            h["Authorization"] = f"Bearer {os.environ.get(spec.credential_env, '')}"
+        value, _ = self._credential(spec)
+        if value:
+            h["Authorization"] = f"Bearer {value}"
         return h
 
     def _get(self, spec: Spec, url: str, timeout: int = PROBE_TIMEOUT):
@@ -146,9 +260,8 @@ class OpenAICompatible:
         loaded; else the loaded one when the server can say; else the first
         listed, which is all a server without load state can offer."""
         ep = spec.endpoint.rstrip("/")
-        if spec.credential_env and not os.environ.get(spec.credential_env):
-            return "", (f"{spec.credential_env} is not set in the environment -- "
-                        f"{spec.name or ep} needs a key there")
+        if (spec.credential_env or spec.credential_file) and not self._credential(spec)[0]:
+            return "", self._missing_key(spec)
         listed = self.models(spec)
         if not listed:
             hint = f" ({spec.hint})" if spec.hint else ""
@@ -187,12 +300,19 @@ class OpenAICompatible:
         ep = spec.endpoint.rstrip("/")
         n = self.context_length(spec)
         reason = f"{ep} -- reachable, model {model}" + (f", {n:,}-token context" if n else "")
-        warning = ""
+        warnings = []
         if n and n > ROOMY_CONTEXT:
-            warning = (f"loaded with a {n:,}-token context; a short structured task needs a "
-                       f"couple of thousand, and an oversized window is the usual reason a local "
-                       f"run takes minutes (reload it at 16k-32k)")
-        return Readiness(True, reason, warning)
+            warnings.append(f"loaded with a {n:,}-token context; a short structured task needs a "
+                            f"couple of thousand, and an oversized window is the usual reason a local "
+                            f"run takes minutes (reload it at 16k-32k)")
+        _, source = self._credential(spec)
+        if source:
+            reason += f", key from {source}"              # the route, never the value
+            if source != spec.credential_env:
+                perm = _permission_warning(source)
+                if perm:
+                    warnings.append(perm)
+        return Readiness(True, reason, "; ".join(warnings))
 
     def invoke(self, spec: Spec, req: Request) -> Response:
         model, why = self._target(spec)

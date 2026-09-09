@@ -27,7 +27,7 @@ _IMPLICIT_MARKERS = {"CLAUDE.md", "skills", "commands", "agents", "settings.json
 _TOP_KEYS = {"manifest_version", "description", "territories", "entries",
              "collect_exclude", "deny", "hold_additions"}
 _ENTRY_KEYS = {"repo", "territory", "target", "strategy", "overlays", "vars", "os",
-               "tags"}
+               "tags", "allow_secrets"}
 #: The only values `os` may take. An unknown value used to parse fine and then
 #: never apply anywhere -- a typo silently removed the entry from every box.
 VALID_OS = {"windows", "posix"}
@@ -50,6 +50,12 @@ class Entry:
     # Declared box tags this entry requires, ALL of them (see boxconfig).
     # Empty means "every box", which is what every pre-tags entry meant.
     tags: list[str] = field(default_factory=list)
+    # True means this entry's files are MEANT to carry a credential (a keys
+    # file the person syncs to their own boxes on purpose): collect skips the
+    # credential-shape scan for them and says so per file. The deny list still
+    # applies. False is the default and what every pre-existing entry means
+    # (#64, 2026-09-09).
+    allow_secrets: bool = False
 
 
 @dataclass
@@ -174,10 +180,18 @@ class Manifest:
                 tags, errs = validate_tags(e["tags"], f"entry {i}")
                 if errs:
                     raise ManifestError("; ".join(errs))
+            # A boolean, strictly: the `os` lesson above -- a value that parses
+            # and then means nothing is worse than an error. "true" in quotes
+            # must not pass as an allowance.
+            allow = e.get("allow_secrets", False)
+            if not isinstance(allow, bool):
+                raise ManifestError(
+                    f"entry {i}: allow_secrets must be true or false, not {allow!r}")
             entries.append(Entry(
                 repo=e["repo"], strategy=strategy, territory=e.get("territory"),
                 target=e.get("target"), overlays=list(e.get("overlays") or []),
-                vars=list(e.get("vars") or []), os=os_val, tags=tags))
+                vars=list(e.get("vars") or []), os=os_val, tags=tags,
+                allow_secrets=allow))
 
         return cls(
             version=version,

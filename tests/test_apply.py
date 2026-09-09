@@ -56,6 +56,35 @@ def test_seed_if_absent_seeds_once(env, backup_dir):
     assert (claude / "settings.local.json").read_text(encoding="utf-8") == '{"mine": true}'
 
 
+def test_k3_template_seeds_under_a_new_keys_directory_once(env, backup_dir):
+    """K3c (#64): the way a payload ships a keys file safely is a
+    `seed-if-absent` entry from a placeholder template (an EMPTY value) to
+    `keys/<provider>.env` under the user territory. This is a PIN, not an
+    anchor: the seed path already creates a missing parent directory and
+    never overwrites, so it passes on the code as found -- it is here so
+    the keys directory's one dependency on `apply` stays stated and tested."""
+    import json
+    from dazzle_claude_config.manifest import Manifest
+    _, user, checkout, _, roots = env
+    (checkout / "settings" / "keys").mkdir(parents=True)
+    (checkout / "settings" / "keys" / "openrouter.template.env").write_text(
+        "OPENROUTER_API_KEY=\n", encoding="utf-8")
+    (checkout / "ccs-manifest.json").write_text(json.dumps({
+        "manifest_version": 1,
+        "territories": {"userclaude": {"root_var": "USER_CLAUDE", "repo_dir": "userclaude"}},
+        "entries": [{"repo": "settings/keys/openrouter.template.env", "territory": "userclaude",
+                     "target": "keys/openrouter.env", "strategy": "seed-if-absent"}]}),
+        encoding="utf-8")
+    manifest = Manifest.load(checkout)
+    r = apply(manifest, checkout, roots, backup_dir)
+    seeded = user / "keys" / "openrouter.env"
+    assert "keys/openrouter.env" in r.seeded and seeded.read_text(encoding="utf-8") == "OPENROUTER_API_KEY=\n"
+    seeded.write_text("OPENROUTER_API_KEY=filled-in-by-the-person\n", encoding="utf-8")
+    r2 = apply(manifest, checkout, roots, backup_dir)
+    assert r2.seeded == []
+    assert seeded.read_text(encoding="utf-8") == "OPENROUTER_API_KEY=filled-in-by-the-person\n"
+
+
 def test_deferred_strategies_reported(env, backup_dir):
     _, _, checkout, manifest, roots = env
     r = apply(manifest, checkout, roots, backup_dir)

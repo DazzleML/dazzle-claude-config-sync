@@ -21,8 +21,16 @@ What lives HERE, and only here, is what is genuinely this tool's:
     versus remote is an endpoint and a key, never code;
   * `names()`, the list `--ai`, `ai_merge_backend` and `ccs doctor` share;
   * `spec_for()` and `build_backend()`, which apply the person's overrides
-    (`ai_merge_endpoint`, `ai_merge_model`, `ai_merge_api_key_env`) to a
-    preset and build the object the caller talks to.
+    (`ai_merge_endpoint`, `ai_merge_model`, `ai_merge_api_key_env`,
+    `ai_merge_api_key_file`) to a preset and build the object the caller
+    talks to;
+  * `keys_dir()`, where a hosted preset's key file lives by default
+    (`~/claude/keys/<preset>.env`, user territory). The library's read order
+    is fixed -- a file named on purpose, then the environment, then fallback
+    files -- and `spec_for` maps this tool's order onto it: an explicit
+    `ai_merge_api_key_file` becomes the named file, the keys directory the
+    fallback, so the environment variable wins over the directory and the
+    explicit file wins over both.
 
 Everything the caller needs from the library is re-exported here so that
 this stays the only module importing ``_vendor``: `build`, `run`,
@@ -33,6 +41,8 @@ workspace or a live tree: everything that installs or destroys stays in
 ``merge.py``, behind validation and ``--accept``.
 """
 from __future__ import annotations
+
+from pathlib import Path
 
 from ._vendor.ailib import parsers                                  # noqa: F401
 from ._vendor.ailib.backend import Backend as _Backend, build         # noqa: F401
@@ -99,10 +109,27 @@ def names() -> tuple[str, ...]:
     return (PROMPT_ONLY, *PRESETS)
 
 
+def keys_dir(user_claude: Path) -> Path:
+    """`~/claude/keys` -- user territory, never the payload: one
+    `<preset>.env` per provider, holding a `NAME=value` line. Read only when
+    the environment variable has nothing; `ai_merge_api_key_file` names a
+    file read before both."""
+    return Path(user_claude) / "keys"
+
+
 def spec_for(name: str, *, endpoint: str | None = None, model: str | None = None,
-             api_key_env: str | None = None) -> _Spec:
+             api_key_env: str | None = None, api_key_file: str | None = None,
+             keys_dir: Path | None = None) -> _Spec:
     """The preset `name` with the person's overrides applied. prompt-only is
-    a mode of the caller, not a backend, and is refused here on purpose."""
+    a mode of the caller, not a backend, and is refused here on purpose.
+
+    The key's route, mapped onto the library's fixed order (named file,
+    environment, fallbacks): `api_key_file` is the named file; when
+    `keys_dir` is given and the spec names a credential variable at all,
+    `<keys_dir>/<name>.env` is the one fallback. A preset that needs no key
+    (the local servers) gets no fallback, so no file is ever looked for on
+    its behalf. Computed HERE and not in `build_backend`, because doctor
+    calls this directly and must report the same route a merge would take."""
     if name == PROMPT_ONLY:
         raise ValueError(f"{PROMPT_ONLY!r} is not a backend: it writes the prompt and stops")
     try:
@@ -116,14 +143,21 @@ def spec_for(name: str, *, endpoint: str | None = None, model: str | None = None
         changes["model"] = str(model)
     if api_key_env:
         changes["credential_env"] = str(api_key_env)
-    return spec.with_(**changes) if changes else spec
+    if api_key_file:
+        changes["credential_file"] = str(api_key_file)
+    spec = spec.with_(**changes) if changes else spec
+    if keys_dir is not None and spec.credential_env:
+        spec = spec.with_(credential_fallbacks=(str(Path(keys_dir) / f"{name}.env"),))
+    return spec
 
 
 def build_backend(opts) -> _Backend:
     """A backend for `opts` (an `aistep.AiOptions`, or anything with
-    `backend`, `endpoint`, `model` and `api_key_env`). The single seam a test
-    replaces to keep a real preset and a real cache while faking the
-    transport."""
+    `backend`, `endpoint`, `model`, `api_key_env`, `api_key_file` and
+    `keys_dir`). The single seam a test replaces to keep a real preset and a
+    real cache while faking the transport."""
     return build(spec_for(opts.backend, endpoint=getattr(opts, "endpoint", None),
                           model=getattr(opts, "model", None),
-                          api_key_env=getattr(opts, "api_key_env", None)))
+                          api_key_env=getattr(opts, "api_key_env", None),
+                          api_key_file=getattr(opts, "api_key_file", None),
+                          keys_dir=getattr(opts, "keys_dir", None)))

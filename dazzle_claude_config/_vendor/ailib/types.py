@@ -4,11 +4,11 @@ and what comes BACK.
 A `Spec` is everything needed to build a backend -- which transport, where,
 which model, how to authenticate, how to invoke a CLI -- and nothing that
 varies per call. It is immutable, so it can be shared, hashed and recorded.
-It holds the NAME of the environment variable carrying a credential and
-never the credential itself: a spec is exactly the object that ends up in a
-cache key, a provenance record and a health-check line, and a secret in a
-frozen dataclass ends up in all three. `identity()` is the part of a spec
-those consumers may see.
+It holds the NAME of the environment variable carrying a credential, or the
+PATH of a file holding one, and never the credential itself: a spec is
+exactly the object that ends up in a cache key, a provenance record and a
+health-check line, and a secret in a frozen dataclass ends up in all three.
+`identity()` is the part of a spec those consumers may see.
 
 A `Request` is what varies per call and is the same for every transport: the
 prompt, the shape the answer must take, the limits. The model is NOT here --
@@ -34,6 +34,12 @@ STREAM = "stream"                 # output can be echoed as it arrives
 ON_PREM = "data_stays_on_prem"    # the prompt does not leave the user's own network
 
 
+def _basename(path: str) -> str:
+    """The last component of `path` under EITHER separator, so the same
+    logical file yields the same identity on every platform."""
+    return path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+
+
 @dataclass(frozen=True)
 class Spec:
     """Everything needed to BUILD a backend. Immutable.
@@ -46,6 +52,13 @@ class Spec:
     model          -- the model to ask for; "" means the backend's own choice
     credential_env -- the NAME of the environment variable holding a bearer
                       token, resolved at request time; never the value
+    credential_file -- the PATH of a file holding the token, read at request
+                      time BEFORE the environment (a file named on purpose
+                      wins). `NAME=value` lines, looked up by credential_env;
+                      a file with a single bare line is the value itself
+    credential_fallbacks -- paths read only when the environment has
+                      nothing, in order (a tool's default key location).
+                      Neither field ever holds the value
     command        -- CLI transports: the argv template. Placeholders:
                       {model}, {schema} (the schema inline, one argv token),
                       {schema_file}, {prompt_file}, {output_file} (paths in the
@@ -68,6 +81,8 @@ class Spec:
     endpoint: str = ""
     model: str = ""
     credential_env: str = ""
+    credential_file: str = ""
+    credential_fallbacks: tuple[str, ...] = ()
     command: tuple[str, ...] = ()
     answer: str = "stdout"
     env_unset: tuple[str, ...] = ()
@@ -83,12 +98,18 @@ class Spec:
         """What a cache key, a record or a report may hold: the things that
         decide WHICH model answers. Never the credential's value; not the
         executable's resolved path (a reinstall must not flush a cache); not
-        the name, the hint, the timeout or the candidates."""
+        the name, the hint, the timeout or the candidates. A key file is
+        named by its BASENAME only: the full path carries the account name,
+        records get pasted into issues, and a moved home must not flush the
+        cache either."""
         parts = [self.transport, self.endpoint.rstrip("/"), self.model, " ".join(self.command)]
         if self.extra:
             parts.append(json.dumps(sorted(self.extra), sort_keys=True, default=str))
         if self.credential_env:
             parts.append(f"key:{self.credential_env}")
+        for path in (self.credential_file, *self.credential_fallbacks):
+            if path:
+                parts.append(f"keyfile:{_basename(path)}")
         return "|".join(parts)
 
 

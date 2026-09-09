@@ -1,0 +1,77 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "-x",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_secrets.py",
+      "tests/test_manifest.py",
+      "tests/test_collect.py",
+      "tests/test_apply.py",
+      "tests/test_transport_openai_compat.py",
+      "tests/test_ailib_types.py",
+      "tests/test_ailib_presets.py",
+      "tests/test_ai_keys.py",
+      "tests/test_doctor_ai.py",
+      "tests/test_vendored_ailib.py"
+    ],
+    "timestamp": "2026-09-09T07:22:50-04:00"
+  },
+  "results": [
+    {
+      "id": "M7",
+      "file": "dazzle_claude_config/collect.py",
+      "note": "round 2: allowance bypasses the hard deny -- killing test test_k3_an_allowance_is_not_a_way_past_the_hard_deny",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M8",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "round 2: doctor reads the wrong setting for the key file -- killing test test_doctor_reads_the_named_key_file_from_the_same_setting_a_merge_does",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M11",
+      "file": "dazzle_claude_config/userconfig.py",
+      "note": "round 2: wrong env constant -- killing test test_k5_the_environment_variable_form_of_the_setting_reaches_the_merge",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M15",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/openai_compat.py",
+      "note": "round 2: an empty quoted value read as present -- killing rows POC_KEY=\"\" and POC_KEY='' of test_the_key_file_formats_that_read",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M16",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/openai_compat.py",
+      "note": "round 2: a multi-line bare file guessed -- killing row first-bare/second-bare of test_the_key_file_formats_that_read",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 5
+  },
+  "anomalies": []
+}

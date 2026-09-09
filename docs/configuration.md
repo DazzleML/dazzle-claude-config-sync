@@ -33,6 +33,7 @@ You do not need this page to answer a question about one setting -- `--explain <
 | [`ai_merge_endpoint`](#ai_merge_endpoint) | `null` | `CCS_AI_MERGE_ENDPOINT` |
 | [`ai_merge_model`](#ai_merge_model) | `null` | `CCS_AI_MERGE_MODEL` |
 | [`ai_merge_api_key_env`](#ai_merge_api_key_env) | `null` | `CCS_AI_MERGE_API_KEY_ENV` |
+| [`ai_merge_api_key_file`](#ai_merge_api_key_file) | `null` | `CCS_AI_MERGE_API_KEY_FILE` |
 | [`interactive`](#interactive) | `true` | `CCS_INTERACTIVE` |
 | [`status_detail`](#status_detail) | `"auto"` | `CCS_STATUS_DETAIL` |
 | [`status_max_lines`](#status_max_lines) | `30` | `CCS_STATUS_MAX_LINES` |
@@ -84,7 +85,13 @@ Which model the AI merge asks for. Every backend honours it in its own way: the 
 
 **Default:** `null` &middot; **Environment:** `CCS_AI_MERGE_API_KEY_ENV`
 
-The NAME of the environment variable holding the key a hosted backend needs -- never the key itself, which stays out of this file, out of the cache and out of every record. Unset means the preset's own default: OPENAI_API_KEY for openai, OPENROUTER_API_KEY for openrouter; the local servers need none. `ccs doctor` says which variable it looked for when it is not set.
+The NAME of the environment variable holding the key a hosted backend needs -- never the key itself, which stays out of this file, out of the cache and out of every record. Unset means the preset's own default: OPENAI_API_KEY for openai, OPENROUTER_API_KEY for openrouter; the local servers need none. When the variable is not set, ccs reads `~/claude/keys/<preset>.env` instead (a `NAME=value` line, with this NAME), and ai_merge_api_key_file names a file read before both. `ccs doctor` says where it looked, and where it found the key.
+
+### ai_merge_api_key_file
+
+**Default:** `null` &middot; **Environment:** `CCS_AI_MERGE_API_KEY_FILE`
+
+The PATH of a file holding the key a hosted backend needs, read BEFORE the environment variable -- for a key you keep in a file rather than a shell. `NAME=value` lines, where NAME is the variable ai_merge_api_key_env or the preset names (OPENROUTER_API_KEY for openrouter); an `export ` prefix, quotes, `#` comments and blank lines are fine, and a file holding only the key works too. Unset means the environment variable, and when that is unset as well, `~/claude/keys/<preset>.env` -- user territory, one file per provider, never part of the payload. The key's value is read when a request is made and never enters this file, the cache, a record or a report; `ccs doctor` says which of the three places it found the key in, and on Linux and macOS warns when the file is readable by anyone but you.
 
 ### interactive
 

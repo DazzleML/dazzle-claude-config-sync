@@ -58,6 +58,24 @@ def test_identity_ignores_the_things_that_do_not():
     assert base.identity() == base.with_(on_prem=True).identity()
 
 
+def test_identity_names_a_key_file_by_its_basename_only():
+    """K5 (2026-09-09). A key file is part of who you asked -- a different
+    file may be a different account -- but only its NAME: the full path
+    carries the user's home, records get pasted into issues, and a moved
+    home must not flush the cache. Both separators, both fields."""
+    plain = Spec("openai_compat", endpoint="https://h/v1", credential_env="K")
+    named = plain.with_(credential_file="C:\\Users\\someone\\claude\\keys\\openrouter.env")
+    fallback = plain.with_(credential_fallbacks=("/home/someone/claude/keys/openrouter.env",))
+    assert plain.identity() != named.identity()
+    assert "keyfile:openrouter.env" in named.identity()
+    assert "keyfile:openrouter.env" in fallback.identity()
+    assert "someone" not in named.identity() and "someone" not in fallback.identity()
+    # the same file under another home, and under the other separator, is the same identity
+    assert named.identity() == plain.with_(credential_file="/Users/other/keys/openrouter.env").identity()
+    # the value is never anywhere near the identity: the spec holds a path, not a secret
+    assert "credential_file" not in named.identity()
+
+
 def test_identity_of_a_cli_spec_is_the_template_not_the_substitution():
     """The unsubstituted template, so two runs with the same preset share a
     cache even though {model} differs per call... which it does not: the

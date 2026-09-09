@@ -4,6 +4,12 @@ All notable changes to dazzle-claude-config (ccs) are documented here. Format fo
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-09
+
+### Added
+- **A hosted backend's key can live in a file.** `--ai openrouter` and `--ai openai` read their key from three places, in this order, and the first that has it wins: a file named by the new setting **`ai_merge_api_key_file`** (or `CCS_AI_MERGE_API_KEY_FILE`); the environment variable the preset names (`OPENROUTER_API_KEY`, `OPENAI_API_KEY`) or the one `ai_merge_api_key_env` names; and **`~/claude/keys/<preset>.env`** -- `~/claude/keys/openrouter.env` for openrouter -- user territory, one file per provider, never part of the payload. A key file holds `NAME=value` lines with that variable's name (`OPENROUTER_API_KEY=...`); an `export ` prefix, quotes, `#` comments, blank lines, Windows line endings and a byte-order mark are all fine, and a file holding only the key works too. The value is read when a request is made and never enters the config file, the cache, a record or a report: a record names the file it came from (`keyfile:openrouter.env`), never its contents. `ccs doctor` says where it looked and where it found the key (`key from OPENROUTER_API_KEY`, or `key from <path>`); when it found none, it names the variable and every file with why each gave nothing (`does not exist`, `has no OPENROUTER_API_KEY line`), so you know where to put it. On Linux and macOS a key file readable by anyone but you is a warning. Because the file's name joins what a cached answer is keyed on, answers cached for a hosted preset before this version are recomputed once. The docs: `docs/ai-merge.md`, `docs/configuration.md`.
+- **`ccs collect` refuses OpenRouter and OpenAI keys, and a manifest entry can allow them.** The credential scan that already stopped Anthropic, GitHub, AWS and Slack tokens from reaching the payload now knows the OpenRouter (`sk-or-v1-...`) and OpenAI (`sk-proj-...`, `sk-svcacct-...`, `sk-admin-...`, and the older `sk-...`) shapes, so a key file that strays into a collected directory is refused by name with a twelve-character excerpt, as before. For the person who keeps their keys in their own private payload on purpose, a manifest entry may say `"allow_secrets": true` (it must be `true` or `false`; the string `"true"` is refused as malformed): that one entry is collected without the scan, and the report prints `allowed <path> -- allow_secrets on this entry: not scanned for credentials` for each of its files -- the path, never the content -- so including a key is exactly as visible as refusing one. A template (`seed-if-absent` into `keys/openrouter.env` with an empty value) seeds under a new `keys/` directory on a fresh box with nothing else changed.
+
 ### Changed
 - **The OpenAI-compatible transport is named for the protocol, not the company.** Inside the AI library the transport that LM Studio, Ollama, OpenRouter and OpenAI's own API all ride was called `openai`, the same word as the `openai` preset (the hosted API), which read as if one preset were the transport. It is now `openai_compat`, the term every such server uses for itself. The preset names are unchanged. The transport's name is the first field of the identity a cached answer is keyed on, so answers cached before this change are recomputed once (the cache's day-long life would have done the same by tomorrow).
 
@@ -446,7 +452,8 @@ Fixes both issues 0.3.0 shipped as known, plus five more found by running the to
 - Console scripts `ccs` and `dazzle-claude-config`; stdlib-only, Python 3.10+
 - 53 automated tests + tester-agent exploratory report + human test checklist (`tests/checklists/v0.1.0__Phase1__collect-apply-status-diff.md`)
 
-[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.5.20...v0.6.0
 [0.5.17]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.5.16...v0.5.17
 [0.5.16]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.5.15...v0.5.16

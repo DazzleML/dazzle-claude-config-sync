@@ -1,0 +1,28 @@
+{
+ "test_command": [
+  "python",
+  "-m",
+  "pytest",
+  "-q",
+  "-x",
+  "-p",
+  "no:cacheprovider",
+  "tests/test_secrets.py",
+  "tests/test_manifest.py",
+  "tests/test_collect.py",
+  "tests/test_apply.py",
+  "tests/test_transport_openai_compat.py",
+  "tests/test_ailib_types.py",
+  "tests/test_ailib_presets.py",
+  "tests/test_ai_keys.py",
+  "tests/test_doctor_ai.py",
+  "tests/test_vendored_ailib.py"
+ ],
+ "mutations": [
+  {"id": "M7", "file": "dazzle_claude_config/collect.py", "original": "pattern = is_denied(rel or src.name, manifest.deny)\n            if pattern:\n                result.refused_denied.append((display, pattern))\n                continue", "mutated": "pattern = None if d.entry.allow_secrets else is_denied(rel or src.name, manifest.deny)\n            if pattern:\n                result.refused_denied.append((display, pattern))\n                continue", "note": "round 2: allowance bypasses the hard deny -- killing test test_k3_an_allowance_is_not_a_way_past_the_hard_deny"},
+  {"id": "M8", "file": "dazzle_claude_config/cli.py", "original": "api_key_file=cfg.get(\"ai_merge_api_key_file\"),", "mutated": "api_key_file=cfg.get(\"ai_merge_api_key_env\"),", "note": "round 2: doctor reads the wrong setting for the key file -- killing test test_doctor_reads_the_named_key_file_from_the_same_setting_a_merge_does"},
+  {"id": "M11", "file": "dazzle_claude_config/userconfig.py", "original": "\"ai_merge_api_key_file\": Key(default=None, env=\"CCS_AI_MERGE_API_KEY_FILE\"),", "mutated": "\"ai_merge_api_key_file\": Key(default=None, env=\"CCS_AI_MERGE_API_KEY_PATH\"),", "note": "round 2: wrong env constant -- killing test test_k5_the_environment_variable_form_of_the_setting_reaches_the_merge"},
+  {"id": "M15", "file": "dazzle_claude_config/_vendor/ailib/transports/openai_compat.py", "original": "if len(v) >= 2 and v[0] == v[-1] and v[0] in (\"'\", '\"'):", "mutated": "if len(v) > 2 and v[0] == v[-1] and v[0] in (\"'\", '\"'):", "note": "round 2: an empty quoted value read as present -- killing rows POC_KEY=\"\" and POC_KEY='' of test_the_key_file_formats_that_read"},
+  {"id": "M16", "file": "dazzle_claude_config/_vendor/ailib/transports/openai_compat.py", "original": "if len(lines) == 1 and \"=\" not in lines[0]:", "mutated": "if len(lines) >= 1 and \"=\" not in lines[0]:", "note": "round 2: a multi-line bare file guessed -- killing row first-bare/second-bare of test_the_key_file_formats_that_read"}
+ ]
+}

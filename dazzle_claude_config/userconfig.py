@@ -146,6 +146,10 @@ KEYS: dict[str, Key] = _attach_explanations({
 
     "ai_merge_api_key_env": Key(default=None, env="CCS_AI_MERGE_API_KEY_ENV"),
 
+    # The PATH of a key file, read before the environment variable. The
+    # value is read by the transport at request time and is never a setting.
+    "ai_merge_api_key_file": Key(default=None, env="CCS_AI_MERGE_API_KEY_FILE"),
+
     "interactive": Key(default=True, env="CCS_INTERACTIVE"),
 
     "status_detail": Key(
