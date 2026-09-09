@@ -1,0 +1,86 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "-x",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_aideep.py",
+      "tests/test_airecord.py",
+      "tests/test_aistep.py"
+    ],
+    "timestamp": "2026-09-09T14:29:23-04:00"
+  },
+  "results": [
+    {
+      "id": "M2",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "round 2: a nested .git dir as neighbours -- killing test test_a_nested_git_directory_inside_a_component_is_never_a_neighbour_M2",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M11",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "round 2: before/after swapped -- killing test test_a_neighbour_edit_reports_what_went_and_what_came_in_that_order_M11",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M14",
+      "file": "dazzle_claude_config/aisandbox.py",
+      "note": "round 2: the digest's skip -- killing test test_an_edit_to_gitignore_is_seen_and_the_worktree_pointer_is_not_M14",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M15",
+      "file": "dazzle_claude_config/aisandbox.py",
+      "note": "round 2: added files unreported -- killing test test_a_file_the_model_creates_is_a_touched_file_M15",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M17",
+      "file": "dazzle_claude_config/aisandbox.py",
+      "note": "round 2: copy-mode before content -- killing test test_a_checkout_that_is_not_a_repository_is_copied_and_before_content_is_the_originals_M17",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M19",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "round 2: the kind default -- killing test test_a_recipe_outcome_reads_as_recipe_by_default_M19",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M20",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "round 2: the name precedence -- killing test test_build_backend_prefers_the_steps_backend_over_the_options_M20",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 7
+  },
+  "anomalies": []
+}

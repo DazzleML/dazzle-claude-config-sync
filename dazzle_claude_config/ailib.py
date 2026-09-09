@@ -164,12 +164,13 @@ def spec_for(name: str, *, endpoint: str | None = None, model: str | None = None
     return spec
 
 
-def build_backend(opts) -> _Backend:
+def build_backend(opts, name: str | None = None) -> _Backend:
     """A backend for `opts` (an `aistep.AiOptions`, or anything with
     `backend`, `endpoint`, `model`, `api_key_env`, `api_key_file` and
-    `keys_dir`). The single seam a test replaces to keep a real preset and a
-    real cache while faking the transport."""
-    return build(spec_for(opts.backend, endpoint=getattr(opts, "endpoint", None),
+    `keys_dir`); `name` picks a preset other than `opts.backend` (a step of
+    an `--ai` plan that names its own). The single seam a test replaces to
+    keep a real preset and a real cache while faking the transport."""
+    return build(spec_for(name or opts.backend, endpoint=getattr(opts, "endpoint", None),
                           model=getattr(opts, "model", None),
                           api_key_env=getattr(opts, "api_key_env", None),
                           api_key_file=getattr(opts, "api_key_file", None),

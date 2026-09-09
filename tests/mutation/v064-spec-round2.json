@@ -1,0 +1,23 @@
+{
+ "test_command": [
+  "python",
+  "-m",
+  "pytest",
+  "-q",
+  "-x",
+  "-p",
+  "no:cacheprovider",
+  "tests/test_aideep.py",
+  "tests/test_airecord.py",
+  "tests/test_aistep.py"
+ ],
+ "mutations": [
+  {"id": "M2", "file": "dazzle_claude_config/aideep.py", "original": "if p.is_file() and \".git\" not in p.parts:", "mutated": "if p.is_file():", "note": "round 2: a nested .git dir as neighbours -- killing test test_a_nested_git_directory_inside_a_component_is_never_a_neighbour_M2"},
+  {"id": "M11", "file": "dazzle_claude_config/aideep.py", "original": "others[p] = (aisandbox.before_content(sb, p, live_root), f.read_bytes() if f.is_file() else b\"\")", "mutated": "others[p] = (f.read_bytes() if f.is_file() else b\"\", aisandbox.before_content(sb, p, live_root))", "note": "round 2: before/after swapped -- killing test test_a_neighbour_edit_reports_what_went_and_what_came_in_that_order_M11"},
+  {"id": "M14", "file": "dazzle_claude_config/aisandbox.py", "original": "if name == \".git\":", "mutated": "if name == \".gitignore\":", "note": "round 2: the digest's skip -- killing test test_an_edit_to_gitignore_is_seen_and_the_worktree_pointer_is_not_M14"},
+  {"id": "M15", "file": "dazzle_claude_config/aisandbox.py", "original": "set(before) | set(after)", "mutated": "set(before) & set(after)", "note": "round 2: added files unreported -- killing test test_a_file_the_model_creates_is_a_touched_file_M15"},
+  {"id": "M17", "file": "dazzle_claude_config/aisandbox.py", "original": "p = sb.source_repo / parts[1]", "mutated": "p = sb.checkout / parts[1]", "note": "round 2: copy-mode before content -- killing test test_a_checkout_that_is_not_a_repository_is_copied_and_before_content_is_the_originals_M17"},
+  {"id": "M19", "file": "dazzle_claude_config/aistep.py", "original": "kind: str = \"recipe\"", "mutated": "kind: str = \"deep\"", "note": "round 2: the kind default -- killing test test_a_recipe_outcome_reads_as_recipe_by_default_M19"},
+  {"id": "M20", "file": "dazzle_claude_config/ailib.py", "original": "spec_for(name or opts.backend, endpoint=getattr(opts, \"endpoint\", None),", "mutated": "spec_for(opts.backend or name, endpoint=getattr(opts, \"endpoint\", None),", "note": "round 2: the name precedence -- killing test test_build_backend_prefers_the_steps_backend_over_the_options_M20"}
+ ]
+}

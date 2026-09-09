@@ -53,6 +53,15 @@ RESPONSE_SUFFIX = "-ai.response.json"
 OURS_NAME = "your live file"
 THEIRS_NAME = "the payload's copy"
 
+#: What an answer IS (U4, #64). `recipe`: the line-selection pass over the
+#: conflict hunks; `deep`: a semantic pass over the whole file in a sandbox,
+#: which may contain text no side wrote; `mechanical`: git's own clean merge,
+#: recorded so a deep answer has a first answer to be a variant of. An
+#: answer without the key is a recipe answer from before the key existed.
+RECIPE = "recipe"
+DEEP = "deep"
+MECHANICAL = "mechanical"
+
 
 def proposal_path(merged: Path, n: int = 0) -> Path:
     """``<label>.merged-ai`` -- the proposal, beside the person's file.
@@ -140,18 +149,48 @@ def new_record(*, proposal: bytes, ours: bytes, theirs: bytes, base: bytes | Non
                base_kind: str, backend: str, rules_path: str, rules_sha: str,
                fingerprint: str, valid: bool, failures: list[str],
                licensed: list[str] = (), identity: str = "", model_used: str = "",
-               honoured: tuple[str, ...] | list[str] = ()) -> Record:
+               honoured: tuple[str, ...] | list[str] = (), kind: str = RECIPE) -> Record:
     """A record for a proposal just written, hashing the sides it came from.
     `identity`, `model_used` and `honoured` are what the backend reported
-    about itself; they go into the chosen answer, never into the key."""
+    about itself; they go into the chosen answer, never into the key.
+    `kind` says what the first answer IS (`recipe` by default; `mechanical`
+    when the record is created around git's own clean merge so a deep
+    answer has something to sit beside)."""
     rec = Record(proposal_sha=norm_sha(proposal), ours_sha=norm_sha(ours),
                  theirs_sha=norm_sha(theirs),
                  base_sha=norm_sha(base) if base is not None else "",
                  base_kind=base_kind, backend=backend, rules_path=rules_path,
                  rules_sha=rules_sha, fingerprint=fingerprint, valid=valid,
                  failures=list(failures), licensed=list(licensed))
-    rec.answers[0].update(identity=identity, model_used=model_used, honoured=list(honoured))
+    rec.answers[0].update(identity=identity, model_used=model_used, honoured=list(honoured), kind=kind)
     return rec
+
+
+def answer_kind(answer: dict) -> str:
+    return answer.get("kind") or RECIPE
+
+
+def add_answer(rec: Record, **fields) -> int:
+    """Append an answer and return its index `n` -- the number in its
+    proposal's name (`proposal_path(merged, n)`). `chosen` is NEVER moved
+    here: which answer becomes the file is the person's decision at
+    --accept, and a run that appended one must not decide for them."""
+    a = {"backend": "", "identity": "", "model_used": "", "honoured": [],
+         "fingerprint": "", "proposal_sha": "", "created": _now()}
+    a.update(fields)
+    rec.answers.append(a)
+    return len(rec.answers) - 1
+
+
+def matching_answer(rec: Record, merged: bytes) -> int | None:
+    """The index of the answer whose proposal `merged` now equals, byte for
+    byte under the LF rule every sha here uses -- or None when it equals
+    none of them (the person's own work)."""
+    sha = norm_sha(merged)
+    for n, a in enumerate(rec.answers):
+        if a.get("proposal_sha") == sha:
+            return n
+    return None
 
 
 _REQUIRED = ("proposal_sha", "ours_sha", "theirs_sha", "base_sha", "base_kind",

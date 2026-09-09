@@ -78,10 +78,30 @@ class AiOptions:
     keys_dir: Path | None = None   # `~/claude/keys`: the default key files, read after it
 
 
+@dataclass(frozen=True)
+class AiStep:
+    """One step of an `--ai` plan (U4/U5 of #64): `recipe` -- the
+    line-selection pass over the conflict hunks -- or `deep` -- the
+    semantic pass over the whole file in a sandbox; `backend` is the preset
+    it runs on."""
+    kind: str
+    backend: str
+
+
 @dataclass
 class AiOutcome:
-    """What happened to one file, for the caller's report and record."""
-    status: str                    # no-hunks | prompt-written | proposed | rejected | backend-failed
+    """What happened to one file, for the caller's report and record.
+
+    The recipe's statuses: no-hunks | prompt-written | proposed | rejected |
+    backend-failed. The deep step's (`kind == "deep"`): deep-proposed (a
+    variant kept within the allowed rung) | deep-empty (the model changed
+    nothing: a correct answer) | deep-failed (the edits reached beyond the
+    allowed rung, or the answer could not be applied) | deep-skipped (no
+    call was made: nothing to work on, the backend not ready, or a scope
+    it cannot reach) | deep-escaped (the backend changed a REAL file; the
+    variant is discarded).
+    """
+    status: str                    # no-hunks | prompt-written | proposed | rejected | backend-failed | deep-*
     hunks: int = 0                 # regions both sides changed: the model's
     clean_lines: int = 0           # lines git resolved on its own: never sent
     backend: str = ""              # the preset's name, as the person typed it
@@ -103,6 +123,19 @@ class AiOutcome:
     cached: bool = False
     error: str = ""
     error_path: Path | None = None   # the backend's full output, when it was long
+    # -- the deep step (U4, #64) --------------------------------------------------
+    kind: str = "recipe"           # recipe | deep
+    variant: Path | None = None    # <label>.merged-ai.<n>: the deep step's answer, beside the others
+    scope_allowed: int = 0         # the rung the person allowed (1-4)
+    scope_needed: int = 0          # the rung the edits needed (0 = no edits)
+    touched: list[str] = field(default_factory=list)   # sandbox paths the model changed
+    # (path, region, rung, the model's reason) per edit -- the report's lines
+    edits: list[tuple[str, str, int, str]] = field(default_factory=list)
+    summary: str = ""              # the model's one-line summary of what it did
+    guarantees: str = ""           # the guarantees line for this answer
+    escapes: list[str] = field(default_factory=list)   # REAL files the backend changed (deep-escaped)
+    tripwire: list[str] = field(default_factory=list)  # the loss check's lines: recorded, never the gate
+    warning: str = ""              # the backend's readiness warning (#62)
 
 
 def _safe(label: str) -> str:

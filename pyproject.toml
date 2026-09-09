@@ -58,7 +58,7 @@ include = ["dazzle_claude_config", "dazzle_claude_config.*"]
 # you cannot easily debug. tests/test_explanations_ship.py fails if it drops.
 [tool.setuptools.package-data]
 dazzle_claude_config = ["settings-explanations.json", "merge-tools.json", "inject.ps1",
-                        "_vendor/ailib/_VENDORED.md", "prompts/ai-merge.md"]
+                        "_vendor/ailib/_VENDORED.md", "prompts/ai-merge.md", "prompts/ai-deep.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

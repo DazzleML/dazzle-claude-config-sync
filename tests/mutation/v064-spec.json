@@ -1,0 +1,36 @@
+{
+ "test_command": [
+  "python",
+  "-m",
+  "pytest",
+  "-q",
+  "-x",
+  "-p",
+  "no:cacheprovider",
+  "tests/test_aideep.py",
+  "tests/test_airecord.py",
+  "tests/test_aistep.py"
+ ],
+ "mutations": [
+  {"id": "M1", "file": "dazzle_claude_config/aideep.py", "original": "out.discard(f\"{aisandbox.CHECKOUT_DIR}/{repo_rel}\")", "mutated": "out.add(f\"{aisandbox.CHECKOUT_DIR}/{repo_rel}\")", "note": "the payload file becomes a rung-3 neighbour; docstring says it is never one"},
+  {"id": "M2", "file": "dazzle_claude_config/aideep.py", "original": "if p.is_file() and \".git\" not in p.parts:", "mutated": "if p.is_file():", "note": "removed guard: files under a .git directory in the component count as neighbours"},
+  {"id": "M3", "file": "dazzle_claude_config/aideep.py", "original": "if scope >= 3 and not tools:", "mutated": "if scope > 3 and not tools:", "note": "boundary: rung 3 (neighbours) no longer refused for a no-tools backend"},
+  {"id": "M4", "file": "dazzle_claude_config/aideep.py", "original": "out.escapes = guard.escapes()", "mutated": "out.escapes = []", "note": "removed guard: the real-tree hash comparison never runs; an escape is kept as a variant"},
+  {"id": "M5", "file": "dazzle_claude_config/aideep.py", "original": "if verdict.needed > scope:", "mutated": "if verdict.needed >= scope:", "note": "boundary: edits landing exactly on the allowed rung now fail instead of being kept"},
+  {"id": "M6", "file": "dazzle_claude_config/aideep.py", "original": "workdir=str(sb.root) if tools else \"\"", "mutated": "workdir=str(checkout_repo) if tools else \"\"", "note": "wrong field: a tools backend runs in the REAL checkout, not the sandbox"},
+  {"id": "M7", "file": "dazzle_claude_config/aideep.py", "original": "check = _git(d, \"apply\", \"--check\", \"answer.patch\")", "mutated": "check = _git(d, \"apply\", \"answer.patch\")", "note": "--check dropped: the patch is applied twice, so every non-empty diff fails at the second apply"},
+  {"id": "M8", "file": "dazzle_claude_config/aideep.py", "original": "if not mechanical:", "mutated": "if mechanical is None:", "note": "None-vs-truthiness: an empty mechanical result proceeds into the sandbox and the backend"},
+  {"id": "M9", "file": "dazzle_claude_config/aideep.py", "original": "out.tripwire = [str(x) for x in tripwire(variant)]", "mutated": "out.tripwire = [str(x) for x in tripwire(variant)]\n                if out.tripwire:\n                    out.status = \"deep-failed\"", "note": "the loss check becomes a gate; docstring says it is a tripwire that never gates"},
+  {"id": "M10", "file": "dazzle_claude_config/aideep.py", "original": "if p == sb.payload_rel:", "mutated": "if p != sb.payload_rel:", "note": "comparison flip: only the payload lands in `others`, every other touched file is dropped from the ladder"},
+  {"id": "M11", "file": "dazzle_claude_config/aideep.py", "original": "others[p] = (aisandbox.before_content(sb, p, live_root), f.read_bytes() if f.is_file() else b\"\")", "mutated": "others[p] = (f.read_bytes() if f.is_file() else b\"\", aisandbox.before_content(sb, p, live_root))", "note": "swapped arguments: before/after content reversed for every non-payload edit"},
+  {"id": "M12", "file": "dazzle_claude_config/aideep.py", "original": "variant = airecord.proposal_path(merged, n)", "mutated": "rec.chosen = n\n        variant = airecord.proposal_path(merged, n)", "note": "the deep step moves `chosen` to its own answer before writing the record; nothing is ever chosen here"},
+  {"id": "M13", "file": "dazzle_claude_config/aisandbox.py", "original": "dirnames[:] = sorted(d for d in dirnames if d != \".git\")", "mutated": "dirnames[:] = sorted(dirnames)", "note": "dropped filter: .git directories are hashed, so git's own worktree bookkeeping reads as an escape"},
+  {"id": "M14", "file": "dazzle_claude_config/aisandbox.py", "original": "if name == \".git\":", "mutated": "if name == \".gitignore\":", "note": "wrong constant: a worktree's .git pointer FILE is hashed and .gitignore is skipped"},
+  {"id": "M15", "file": "dazzle_claude_config/aisandbox.py", "original": "set(before) | set(after)", "mutated": "set(before) & set(after)", "note": "and/or swap: added and removed files are no longer reported as changed"},
+  {"id": "M16", "file": "dazzle_claude_config/aisandbox.py", "original": "payload_file.write_bytes(mechanical)", "mutated": "if not payload_file.exists():\n        payload_file.write_bytes(mechanical)", "note": "the payload file is only written when missing; the worktree's HEAD content is what the model reads"},
+  {"id": "M17", "file": "dazzle_claude_config/aisandbox.py", "original": "p = sb.source_repo / parts[1]", "mutated": "p = sb.checkout / parts[1]", "note": "wrong field: in copy mode the BEFORE content is read from the sandbox after the call, so before == after"},
+  {"id": "M18", "file": "dazzle_claude_config/airecord.py", "original": "rec.answers.append(a)\n    return len(rec.answers) - 1", "mutated": "rec.answers.append(a)\n    return len(rec.answers)", "note": "wrong return value: the index is off by one, so the variant file is numbered n+1"},
+  {"id": "M19", "file": "dazzle_claude_config/aistep.py", "original": "kind: str = \"recipe\"", "mutated": "kind: str = \"deep\"", "note": "wrong default: a recipe outcome that relies on the default reports itself as deep"},
+  {"id": "M20", "file": "dazzle_claude_config/ailib.py", "original": "spec_for(name or opts.backend, endpoint=getattr(opts, \"endpoint\", None),", "mutated": "spec_for(opts.backend or name, endpoint=getattr(opts, \"endpoint\", None),", "note": "swapped precedence: the step's backend is ignored whenever opts.backend is set"}
+ ]
+}

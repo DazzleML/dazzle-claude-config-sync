@@ -182,6 +182,48 @@ def test_new_record_puts_what_the_backend_reported_into_the_chosen_answer():
     assert r.backend == "openrouter" and r.fingerprint == "k" * 16                 # denormalised, same facts
 
 
+def test_add_answer_appends_and_numbers_and_never_moves_chosen():
+    """U4 (#64): a deep answer joins the record beside the recipe's; which
+    one is chosen is the person's decision at --accept, never a run's."""
+    r = airecord.new_record(proposal=b"p", ours=b"o", theirs=b"t", base=b"b", base_kind="inferred",
+                            backend="claude", rules_path="", rules_sha="", fingerprint="k",
+                            valid=True, failures=[])
+    n = airecord.add_answer(r, kind="deep", backend="lmstudio", identity="openai_compat|http://h/v1|m|",
+                            proposal_sha=norm_sha(b"deep"), scope={"allowed": 1, "needed": 1},
+                            touched=["checkout/x"], variant_of=0, guarantees="g", summary="s",
+                            status="deep-proposed")
+    assert n == 1 and len(r.answers) == 2 and r.chosen == 0
+    a = r.answers[1]
+    assert a["kind"] == "deep" and a["backend"] == "lmstudio" and a["scope"] == {"allowed": 1, "needed": 1}
+    assert a["variant_of"] == 0 and a["created"]                      # stamped
+    assert airecord.add_answer(r, kind="deep", backend="codex", proposal_sha="x") == 2 and r.chosen == 0
+    assert r.answer is r.answers[0]                                    # the chosen one is still the first
+
+
+def test_answer_kind_defaults_to_recipe_for_an_older_answer():
+    assert airecord.answer_kind({"backend": "claude"}) == "recipe"
+    assert airecord.answer_kind({"kind": "deep"}) == "deep"
+    assert airecord.answer_kind({"kind": "mechanical"}) == "mechanical"
+    r = airecord.new_record(proposal=b"p", ours=b"o", theirs=b"t", base=b"b", base_kind="inferred",
+                            backend="git", rules_path="", rules_sha="", fingerprint="",
+                            valid=True, failures=[], kind="mechanical")
+    assert airecord.answer_kind(r.answers[0]) == "mechanical"
+    plain = airecord.new_record(proposal=b"p", ours=b"o", theirs=b"t", base=b"b", base_kind="inferred",
+                                backend="claude", rules_path="", rules_sha="", fingerprint="",
+                                valid=True, failures=[])
+    assert airecord.answer_kind(plain.answers[0]) == "recipe"
+
+
+def test_matching_answer_finds_the_answer_the_merged_file_now_equals():
+    r = airecord.new_record(proposal=b"recipe\n", ours=b"o", theirs=b"t", base=b"b", base_kind="inferred",
+                            backend="claude", rules_path="", rules_sha="", fingerprint="",
+                            valid=True, failures=[])
+    airecord.add_answer(r, kind="deep", backend="lmstudio", proposal_sha=norm_sha(b"deep\n"))
+    assert airecord.matching_answer(r, b"recipe\n") == 0
+    assert airecord.matching_answer(r, b"deep\r\n") == 1                # EOL-insensitive, like every sha here
+    assert airecord.matching_answer(r, b"neither\n") is None
+
+
 def test_a_second_answers_proposal_has_its_own_name(tmp_path):
     merged = tmp_path / "skills__s.md.merged"
     assert airecord.proposal_path(merged) == tmp_path / "skills__s.md.merged-ai"

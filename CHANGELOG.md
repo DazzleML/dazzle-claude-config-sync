@@ -4,6 +4,14 @@ All notable changes to dazzle-claude-config (ccs) are documented here. Format fo
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-09-09
+
+### Added
+- **The deep step: a model reads the parts of a file git merged on its own, in a disposable copy, under the scope ladder.** The third and central piece of the deep merge, not yet reachable from `ccs merge` (the next release wires `--ai claude,deep` and `--ai-scope`). Given a file git merged cleanly -- or the surface merge's proposal for one it did not -- the step hands a model a disposable copy of your configuration: a worktree of the payload checkout beside a copy of the live component, with the merged file written in. A backend with tools (`claude`, `codex`) edits there; a backend without them (a local or hosted server) is shown the file and the two changes and answers with a diff, which git applies to a copy. What the model changed is placed on the four-rung ladder -- the changed regions and their surroundings, the whole file, the file's neighbours, anything in the project -- and kept as a numbered variant beside your other answers only when every edit landed within the scope you allowed; beyond it the step fails and shows you, line by line, the edits it would have made. A backend that changes anything outside its copy is caught by a hash of the real trees before and after, and its answer is discarded. A model that changes nothing is reported as such, a correct answer, not an empty one. Nothing is installed, nothing is chosen: the record beside your file gains the answer, the choice stays yours at `--accept`, and the usual loss check runs as a warning rather than a gate, because a variant of this kind may legitimately contain text neither side wrote. Nothing here is cached.
+
+### Fixed
+- **A sandbox built from a checkout that is not a git repository could have become a worktree of the repository above it.** Found by this release's own tests before anything shipped: `git worktree add` searches upward from a plain directory, and under a temporary tree it found the home directory's repository. The sandbox now attempts a worktree only when the checkout itself is a repository, and copies it otherwise.
+
 ## [0.6.3] - 2026-09-09
 
 ### Added
@@ -465,7 +473,8 @@ Fixes both issues 0.3.0 shipped as known, plus five more found by running the to
 - Console scripts `ccs` and `dazzle-claude-config`; stdlib-only, Python 3.10+
 - 53 automated tests + tester-agent exploratory report + human test checklist (`tests/checklists/v0.1.0__Phase1__collect-apply-status-diff.md`)
 
-[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.3...HEAD
+[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.4...HEAD
+[0.6.4]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.0...v0.6.1
