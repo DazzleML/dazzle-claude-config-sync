@@ -515,8 +515,8 @@ def test_the_counts_come_first_and_one_sided_lines_never_reach_the_prompt(tmp_pa
     lines = out.splitlines()
     head = next(i for i, l in enumerate(lines) if l.startswith("prompt written"))
     # criterion 1: the classification counts, before anything else about the file
-    assert lines[head + 1].strip().startswith("hunks: 1 both sides changed"), lines[head + 1]
-    assert "19 lines git resolved on its own, never sent" in lines[head + 1], lines[head + 1]
+    assert lines[head + 1].strip().startswith("conflict-hunks: 1 -- the model's;"), lines[head + 1]
+    assert "19 lines in diff-hunks git took on its own, never sent" in lines[head + 1], lines[head + 1]
     # criterion 2: the two one-sided edits are in the merged result and NOT in the prompt
     prompts = list((w["user"] / "ccs-merge-rules" / "_prompts").glob("*.md"))
     assert len(prompts) == 1, prompts
@@ -534,7 +534,7 @@ def test_the_counts_come_first_on_a_staged_proposal_too(tmp_path, capsys):
     assert rc in (EXIT_CLEAN, EXIT_DRIFT), out
     lines = out.splitlines()
     head = next(i for i, l in enumerate(lines) if l.startswith("staged"))
-    assert lines[head + 1].strip().startswith("hunks: 1 both sides changed"), lines[head + 1]
+    assert lines[head + 1].strip().startswith("conflict-hunks: 1 -- the model's;"), lines[head + 1]
     assert "rules:" in lines[head + 2] or "no rules" in lines[head + 2], lines[head + 2]
     merged = w["merged"].read_bytes()
     assert b"OURS ALONE" in merged and b"THEIRS ALONE" in merged and b"ten by theirs" in merged

@@ -284,3 +284,22 @@ def test_new_record_without_a_base_records_none():
                             backend="codex", rules_path="", rules_sha="", fingerprint="", valid=False,
                             failures=["refused: no base"])
     assert r.base_sha == "" and r.base_kind == "none"
+
+
+def test_an_answer_with_keys_this_version_does_not_know_is_kept_as_it_is_N5(tmp_path):
+    """U7 (the latitude design, move N5): the record is additive. An answer
+    entry carrying a key a later version adds -- `freedom`, `judged` --
+    reads through `answer_kind`, `add_answer`, `matching_answer` and a
+    write/load round trip untouched, so a later axis migrates nothing."""
+    r = airecord.new_record(proposal=b"git\n", ours=b"o\n", theirs=b"t\n", base=b"b\n",
+                            base_kind="inferred", backend="git", rules_path="", rules_sha="",
+                            fingerprint="", valid=True, failures=[])
+    n = airecord.add_answer(r, kind=airecord.DEEP, proposal_sha=norm_sha(b"variant\n"),
+                            freedom="minimal", judged={"by": "lmstudio", "verdict": "yes"})
+    assert n == 1 and airecord.answer_kind(r.answers[1]) == "deep"
+    assert airecord.matching_answer(r, b"variant\n") == 1
+    p = tmp_path / "x.merged-ai.record.json"
+    airecord.write(p, r)
+    back = airecord.load(p)
+    assert back.answers[1]["freedom"] == "minimal" and back.answers[1]["judged"]["by"] == "lmstudio"
+    assert airecord.answer_kind({"kind": "recipe", "later": 1}) == "recipe" and airecord.answer_kind({}) == "recipe"

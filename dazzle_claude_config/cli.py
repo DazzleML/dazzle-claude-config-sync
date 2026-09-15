@@ -789,17 +789,24 @@ def _doctor(args) -> int:
             # variable and which files it looked in for its key, and where
             # it found one -- the same route a merge takes, because both
             # go through spec_for with the same overrides.
-            _b = _ailib.build(_ailib.spec_for(_backend, endpoint=cfg.get("ai_merge_endpoint"),
-                                              model=cfg.get("ai_merge_model"),
-                                              api_key_env=cfg.get("ai_merge_api_key_env"),
-                                              api_key_file=cfg.get("ai_merge_api_key_file"),
-                                              keys_dir=_ailib.keys_dir(user_claude)))
+            _spec = _ailib.spec_for(_backend, endpoint=cfg.get("ai_merge_endpoint"),
+                                    model=cfg.get("ai_merge_model"),
+                                    api_key_env=cfg.get("ai_merge_api_key_env"),
+                                    api_key_file=cfg.get("ai_merge_api_key_file"),
+                                    keys_dir=_ailib.keys_dir(user_claude))
+            _b = _ailib.build(_spec)
             _ready = _b.probe()
             _caps = _b.capabilities
             _where = ("your text stays on your network" if "data_stays_on_prem" in _caps
                       else "your text goes to a hosted model")
+            # The deep step (#64) reaches neighbours and project only with
+            # tools; say here which this backend is, so a person learns it
+            # before a run refuses a scope.
+            _tools = (f"tools: {getattr(_spec, 'tools', '') or 'granted'} (the deep step may reach "
+                      f"neighbours and project)" if "tools" in _caps
+                      else "no tools: the deep step reaches file, not neighbours")
             if _ready.ok:
-                ok(f"ai merge backend {_backend}: {_ready.reason} -- {_where}")
+                ok(f"ai merge backend {_backend}: {_ready.reason} -- {_where}; {_tools}")
                 if _ready.warning:
                     warn(f"ai merge backend {_backend}: {_ready.warning}")
             else:
@@ -1061,8 +1068,8 @@ day to day, once it is installed:
                                  "edits -- the tool regenerates its output and "
                                  "your prior work in that file is discarded")
             sp.add_argument("--ai", nargs="?", const="auto", default=None, metavar="BACKEND",
-                            help="ask a model to resolve the hunks both sides changed, "
-                                 "under the rules you wrote (~/claude/ccs-merge-rules/); "
+                            help="ask a model to resolve the conflict-hunks (the regions both sides "
+                                 "changed), under the rules you wrote (~/claude/ccs-merge-rules/); "
                                  "the proposal lands in <file>.merged-ai beside yours and "
                                  "installs nothing. BACKEND is a preset: claude or codex "
                                  "(the CLIs), lmstudio or ollama (a server on this machine "
@@ -1662,6 +1669,13 @@ def parse_plan(token: str, *, configured: str) -> list:
         part = raw.strip()
         if not part:
             raise ValueError(f"empty step in --ai {token!r}")
+        if "@" in part or "/" in part:
+            # Reserved (the latitude design of 2026-09-15, move N1): a later
+            # syntax may spell a step's own latitude as `deep@file/minimal`.
+            # Refusing the characters by name today means no plan in anyone's
+            # config comes to depend on them meaning something else.
+            raise ValueError(f"{part!r}: '@' and '/' in a step are reserved for a later per-step latitude "
+                             f"syntax; today's spelling is --ai <preset>,deep --ai-scope <rung>")
         if part == "deep" or part.startswith("deep:"):
             recipe = next((s.backend for s in steps if s.kind == "recipe"), None)
             # a bare `deep` runs on the recipe's backend when one came before
@@ -1731,10 +1745,12 @@ def _n_lines(n: int) -> str:
 def _ai_counts(out) -> str:
     """The classification counts, first under the headline (#19, criterion
     1): how much of the file the model was given, and how much it never saw.
-    git's diff3 did the classifying; the model only ever sees the hunks."""
+    git's diff3 did the classifying; the model only ever sees the
+    conflict-hunks (regions both sides changed); the diff-hunks (regions one
+    side changed) git took on its own, and the recipe never sends them."""
     h = out.hunks
-    return (f"    hunks: {h} both sides changed -- the model's; "
-            f"{out.clean_lines} line{'s' if out.clean_lines != 1 else ''} git resolved on its own, never sent")
+    return (f"    conflict-hunks: {h} -- the model's; "
+            f"{out.clean_lines} line{'s' if out.clean_lines != 1 else ''} in diff-hunks git took on its own, never sent")
 
 
 def _print_ai_report(r, args) -> None:
@@ -1746,8 +1762,14 @@ def _print_ai_report(r, args) -> None:
     for item, out in r.ai:
         label = item.label
         if out.status == "no-hunks":
-            print(c("dim", f"ai  {label} -- no hunk both sides changed; git resolved the "
-                           f"file, nothing for the model to decide"))
+            # The founding case of the deep merge (#64): a clean merge is not a
+            # resolved one -- the diff-hunks were taken one at a time and never
+            # read together. Say so, and name the step that reads them, unless
+            # this plan already ran it (its own line follows).
+            deep_ran = any(i.label == label and getattr(o, "kind", "recipe") == "deep" for i, o in r.ai)
+            nudge = "" if deep_ran else " -- add ,deep to read them together"
+            print(c("dim", f"ai  {label} -- no conflict-hunk; git took the diff-hunks on its own, "
+                           f"nothing for the recipe to decide{nudge}"))
         elif out.status == "prompt-written":
             print(f"{c('cyan', 'prompt written')} {label} {c('dim', '-- ' + str(out.prompt_path))}")
             print(c("dim", _ai_counts(out)))

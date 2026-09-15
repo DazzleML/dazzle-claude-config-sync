@@ -531,3 +531,55 @@ def test_the_prompt_names_the_sandbox_layout_the_scope_and_shows_earlier_variant
     assert "THE DOSSIER" in prompt
     assert prompt.rstrip().endswith("```") and "earlier" in prompt.lower()
     assert prompt.index("THE DOSSIER") < prompt.index("earlier variant")     # shown last
+
+
+# -- U7: the two branches the coverage run of 2026-09-11 named as never executed ---------
+
+def test_a_single_file_live_component_is_copied_and_is_its_own_neighbour(tmp_path, fakes):
+    """An entry whose target is one FILE (a CLAUDE.md), not a directory:
+    the sandbox copies the file beside the checkout, and rung 3 knows the
+    live copy as a neighbour. Neither branch had ever run."""
+    from dazzle_claude_config import aideep, aisandbox
+    from dazzle_claude_config.manifest import Entry
+    w = _world(tmp_path)
+    (w["co"] / "dotclaude" / "CLAUDE.md").write_text("# base\n", encoding="utf-8")
+    _git(w["co"], "add", "-A")
+    _git(w["co"], "commit", "-qm", "a single-file component")
+    (w["live"] / "CLAUDE.md").write_text("# mine\n", encoding="utf-8")
+    entry = Entry(repo="dotclaude/CLAUDE.md", strategy="copy", territory="dotclaude", target="CLAUDE.md")
+    sb = aisandbox.prepare(workdir=w["ws"] / "dotclaude__CLAUDE.md.ai-deep", checkout_repo=w["co"],
+                           live_root=w["live"], entry=entry, rel="", mechanical=b"# merged\n")
+    try:
+        assert sb.live is not None and sb.live.is_file()
+        assert sb.live.read_text(encoding="utf-8") == "# mine\n"
+        assert sb.payload_rel == "checkout/dotclaude/CLAUDE.md" and sb.payload_file.read_bytes() == b"# merged\n"
+        n = aideep.neighbours_of("CLAUDE.md", entry=entry, rel="", checkout_repo=w["co"], live_root=w["live"])
+        assert "live/CLAUDE.md" in n
+        assert "checkout/dotclaude/CLAUDE.md" not in n                 # the payload is never its own neighbour
+    finally:
+        aisandbox.release(sb)
+    assert (w["live"] / "CLAUDE.md").read_text(encoding="utf-8") == "# mine\n"   # the real file untouched
+
+
+def test_a_stale_sandbox_from_an_interrupted_run_is_removed_by_the_next_prepare(tmp_path, fakes):
+    """A run interrupted after `prepare` leaves a worktree registered in the
+    source repo and a directory in the workspace. The next `prepare` at the
+    same workdir removes both -- the worktree through git -- and builds a
+    fresh one, so the source repo never accumulates dead worktrees."""
+    from dazzle_claude_config import aisandbox
+    w = _world(tmp_path)
+    workdir = w["ws"] / "skills__merged.py.ai-deep"
+    first = aisandbox.prepare(workdir=workdir, checkout_repo=w["co"], live_root=w["live"],
+                              entry=w["entry"], rel=w["rel"], mechanical=MERGED_BROKEN.encode())
+    assert first.worktree
+    (workdir / "leftover.txt").write_text("from an interrupted run\n", encoding="utf-8")
+    assert _git(w["co"], "worktree", "list", "--porcelain").count("worktree ") == 2   # the repo and the sandbox
+    second = aisandbox.prepare(workdir=workdir, checkout_repo=w["co"], live_root=w["live"],
+                               entry=w["entry"], rel=w["rel"], mechanical=MERGED_BROKEN.encode())
+    try:
+        assert not (workdir / "leftover.txt").exists()
+        assert second.worktree and second.payload_file.read_bytes() == MERGED_BROKEN.encode()
+        assert _git(w["co"], "worktree", "list", "--porcelain").count("worktree ") == 2   # still exactly one sandbox
+    finally:
+        aisandbox.release(second)
+    assert _git(w["co"], "worktree", "list", "--porcelain").count("worktree ") == 1

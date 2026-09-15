@@ -1,0 +1,45 @@
+{
+  "test_command": [
+    "python",
+    "-m",
+    "pytest",
+    "-q",
+    "-x",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_ai_plan.py",
+    "tests/test_merge_ai.py",
+    "tests/test_doctor_ai.py",
+    "tests/test_aistep.py"
+  ],
+  "mutations": [
+    {
+      "id": "M2",
+      "file": "dazzle_claude_config/cli.py",
+      "original": "        if not part:\n            raise ValueError(f\"empty step in --ai {token!r}\")",
+      "mutated": "        if part is None:\n            raise ValueError(f\"empty step in --ai {token!r}\")",
+      "note": "empty-step guard neutered: a split token is never None, so an empty step (e.g. --ai ',deep' or 'x,,deep') passes through instead of being refused."
+    },
+    {
+      "id": "M3",
+      "file": "dazzle_claude_config/cli.py",
+      "original": "f\"syntax; today's spelling is --ai <preset>,deep --ai-scope <rung>\")",
+      "mutated": "f\"syntax; today's spelling is --ai <preset>,deep --ai-scope <file>\")",
+      "note": "wrong string in the refusal sentence: the corrective spelling it offers names <file> instead of <rung>, misdirecting the person to a spelling that does not exist."
+    },
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/cli.py",
+      "original": "f\"{out.clean_lines} line{'s' if out.clean_lines != 1 else ''} in diff-hunks git took on its own, never sent\")",
+      "mutated": "f\"{out.clean_lines} line{'s' if out.clean_lines > 1 else ''} in diff-hunks git took on its own, never sent\")",
+      "note": "boundary flip in the plural: zero clean lines now prints '0 line' instead of '0 lines'."
+    },
+    {
+      "id": "M10",
+      "file": "dazzle_claude_config/aistep.py",
+      "original": "    scope: int = 1",
+      "mutated": "    scope: int = 2",
+      "note": "default --ai-scope rung raised from 1 to 2: a plan that never passed --ai-scope now lets the deep step reach neighbours by default instead of stopping at the file."
+    }
+  ]
+}

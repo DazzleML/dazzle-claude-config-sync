@@ -77,14 +77,21 @@ class AiOptions:
     api_key_file: str | None = None  # a key file read before the environment (the PATH)
     keys_dir: Path | None = None   # `~/claude/keys`: the default key files, read after it
     # The plan (U5, #64): the steps `--ai` named, in order -- `claude,deep`
-    # is the recipe on claude, then the deep step on claude. Empty means the
-    # recipe alone on `backend` (every caller from before the plan existed).
+    # is the recipe on claude, then the deep step on claude. A caller that
+    # names none (every caller from before the plan existed) gets the recipe
+    # alone on `backend`, filled in at construction: `steps` is never empty
+    # afterwards, so no reader has a default to fall back on (U7, from the
+    # latitude design's note on the old `plan()` fallback).
     steps: tuple = ()
     scope: int = 1                 # --ai-scope: the rung the deep step may reach (airung.RUNGS)
 
+    def __post_init__(self) -> None:
+        if not self.steps:
+            object.__setattr__(self, "steps", (AiStep("recipe", self.backend),))
+
     def plan(self) -> tuple:
-        """The steps, with the pre-plan default filled in."""
-        return self.steps or (AiStep("recipe", self.backend),)
+        """The steps, in order; never empty."""
+        return self.steps
 
 
 @dataclass(frozen=True)

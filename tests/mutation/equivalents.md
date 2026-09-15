@@ -248,3 +248,18 @@ git hash-object (first 12). Only separated-generation runs (modes 1-2) write her
   over the pair: it fails only if the step_opts fix AND the first-step
   value are both undone). (2026-09-09, generation mode 1.) Re-triage the
   moment any reader consults `opts.backend` directly again.
+
+## dazzle_claude_config/cli.py @ a9f0c338c38d
+
+- M7 (v0.6.7 sweep, the clean-merge line's nudge): `deep_ran = any(i.label
+  == label and getattr(o, "kind", "recipe") == "deep" for i, o in r.ai)` with
+  the `i.label == label` clause dropped. **equivalent** -- `merge.run`'s
+  step loop appends a deep-kind outcome for EVERY item it reaches whenever
+  the plan carries a deep step (`deep-skipped` included, merge.py's
+  `res.ai.append((item, dout))` on both branches), and an item refused
+  before the loop has no `no-hunks` outcome to print the line for. So
+  within one run `deep_ran` is the same for every item, and no input
+  separates the two forms. (2026-09-15, generation mode 1; M1, M5, M6, M8,
+  M9 killed in round 1; M2, M3, M4, M10 became assertions.) Re-triage if a
+  plan ever runs the deep step on a subset of the items (per-file plans,
+  or a step that skips items without recording an outcome).

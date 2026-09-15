@@ -1,0 +1,112 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "-x",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_ai_plan.py",
+      "tests/test_merge_ai.py",
+      "tests/test_doctor_ai.py",
+      "tests/test_aistep.py"
+    ],
+    "timestamp": "2026-09-15T17:21:29-04:00"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "and/or swap in the reserved-character guard: a step containing only '@' or only '/' is no longer refused and falls through to the deep/preset parsing.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M2",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "empty-step guard neutered: a split token is never None, so an empty step (e.g. --ai ',deep' or 'x,,deep') passes through instead of being refused.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M3",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "wrong string in the refusal sentence: the corrective spelling it offers names <file> instead of <rung>, misdirecting the person to a spelling that does not exist.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "boundary flip in the plural: zero clean lines now prints '0 line' instead of '0 lines'.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M5",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "swapped argument in the count line: the conflict-hunks figure now reports the diff-hunk line count, so the two numbers under the headline are the same value.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M6",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "inverted condition on the nudge: the ',deep' hint appears exactly when the plan already ran deep, and is silent when it did not.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M7",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "dropped the label condition: a deep step that ran on any other file suppresses this file's nudge, so a clean-merged file under a recipe-only plan loses its hint whenever some other file ran deep.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M8",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "inverted the capability check in doctor: a backend with tools is described as 'no tools: ... reaches file, not neighbours', and a backend without tools is told it may reach neighbours and project.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M9",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "wrong string in doctor's no-tools sentence: it now claims the opposite latitude, telling the person the deep step reaches neighbours when it cannot.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M10",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "default --ai-scope rung raised from 1 to 2: a plan that never passed --ai-scope now lets the deep step reach neighbours by default instead of stopping at the file.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 5,
+    "survived": 5
+  },
+  "anomalies": []
+}

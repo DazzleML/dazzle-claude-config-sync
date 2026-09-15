@@ -17,10 +17,24 @@ ccs diff  skills/think/SKILL.md --ai                 # the proposal beside your 
 ccs diff  skills/think/SKILL.md --ai --variant 1     # the deep step's answer beside your result
 ```
 
+## The words
+
+A three-way merge sorts a file into regions, and the two AI passes divide the regions between them. The names are used the same way in the report, in `ccs doctor` and here.
+
+| word | meaning |
+|---|---|
+| **diff-hunk** | a region one side changed and the other did not. Git takes that side's version on its own, without asking. Textually clean, and not necessarily right. |
+| **conflict-hunk** | a region both sides changed, differently. Git cannot choose and writes it out with three panes: yours, the ancestor's, the payload's. |
+| **the recipe** | the first pass (`--ai claude`): a model picks lines from a conflict-hunk's three panes. It never sees a diff-hunk. |
+| **the deep step** | the second pass (`--ai claude,deep`): a model reads the diff-hunks together, in a disposable copy, and may write text -- as far as the scope you allow. |
+| **the ladder** | how far from git's own changes an edit reached. `hunk`: the changed regions of either kind and their surrounding code (the section under the same heading, the enclosing function or block). `file`: anywhere in this file. `neighbours`: this file and its neighbouring files. `project`: anything under the checkout or this component. |
+
+A merge git completes without a conflict-hunk is not a resolved one: the diff-hunks were taken one at a time and never read together. That is the case the deep step exists for, and the report says so when a plan without it meets one.
+
 ## What happens, in order
 
 1. **The base.** ccs infers the common ancestor from the checkout's history, as it does for every merge. Without one, `--ai` refuses before any prompt is built: a two-way guess is not a merge. Supply a base with `--base-file`, or resolve the file by hand.
-2. **The classification.** `git merge-file --diff3` has already done it. What git resolved is clean text and is never shown to the model. Every conflict hunk, a region both sides changed, is.
+2. **The classification.** `git merge-file --diff3` has already done it. The diff-hunks -- what git took on its own -- are never shown to the recipe. Every conflict-hunk is.
 3. **The rules.** Your policy for the file, in your words, from `~/claude/ccs-merge-rules/<label>.rules.md` -- the label flattened, so `dotclaude/CLAUDE.md` reads `dotclaude__CLAUDE.md.rules.md`, one flat file you can create without making a directory -- else `_default.md`, else none. Every paragraph gets an id (`R1`, `R2`, ...) the model cites when it drops a line. No rules file is a named state, printed with both places ccs looked, never a silent default.
 4. **The prompt.** The rules with their ids, what ccs knows about the file's history (below), and each hunk with its lines named `O1..` (your live file), `B1..` (the ancestor), `T1..` (the payload's copy). A few context lines are shown and marked not selectable.
 5. **The answer.** One JSON block naming lines per hunk, the rules it leaned on, and a sentence of why:
@@ -33,7 +47,7 @@ ccs diff  skills/think/SKILL.md --ai --variant 1     # the deep step's answer be
 
 ## What the model can and cannot do
 
-It can select complete lines from a hunk's three panes and order them as an interleaving. It cannot write a line, cannot reorder within a side, cannot drop a line without a rule you wrote, and never chooses the base. That is by construction: the answer is ids, not text, and ccs does the assembly.
+It can select complete lines from a conflict-hunk's three panes and order them as an interleaving. It cannot write a line, cannot reorder within a side, cannot drop a line without a rule you wrote, and never chooses the base. That is by construction: the answer is ids, not text, and ccs does the assembly.
 
 That is the **recipe**, and it is deliberately shallow: everything git merged on its own is never shown to the model. The case it cannot see is the one where two people's changes each look fine and are wrong together -- one person changes what a function returns, another changes the code that calls it, git merges the two cleanly, and the result is wrong without an error. For that there is a second pass.
 
@@ -79,7 +93,8 @@ The vocabulary is the merge verb's: **staged** means in the workspace, nothing i
 | line | meaning |
 |---|---|
 | `staged <file> -- the AI's proposal (claude) at ...; validation passed; nothing installed` | a proposal was written this run; its rationale and rules follow |
-| `    hunks: 1 both sides changed -- the model's; 19 lines git resolved on its own, never sent` | the classification counts, always the first line under the headline (also after `prompt written`): what the model was given, and how much of the file it never saw |
+| `    conflict-hunks: 1 -- the model's; 19 lines in diff-hunks git took on its own, never sent` | the classification counts, always the first line under the headline (also after `prompt written`): what the recipe was given, and how much of the file it never saw |
+| `ai <file> -- no conflict-hunk; git took the diff-hunks on its own, nothing for the recipe to decide -- add ,deep to read them together` | a clean merge with no deep step in the plan: nothing was resolved by a model, and the diff-hunks were never read together; when the plan carries `deep`, that step's own line follows instead of the nudge |
 | `    copied into .merged (you had no result of your own there); --accept asks before installing it` | the copy rule fired: `.merged` was absent, or the untouched seed |
 | `staged <file> -- the AI's proposal, unchanged since <date>; nothing installed` | `.merged` is still exactly the copy |
 | `staged <file> -- the AI's proposal from <date>; your live file has changed since` | a side moved after the proposal was made; re-run `--ai` |
@@ -110,7 +125,7 @@ A non-interactive run never says yes. A yes is recorded, so the same bytes are n
 
 ## Backends, the cache, and privacy
 
-A backend is a *preset*: a name over one of three ways of reaching a model. The CLIs (`claude`, `codex`) run an executable; the servers (`lmstudio`, `ollama`, `openai`, `openrouter`) speak the OpenAI API to an address -- the same code with a different endpoint and, for the hosted ones, a key. Local versus remote is configuration, never a different feature. `ccs doctor` builds the configured preset and prints what it says about itself: whether its executable was found, what model is loaded and how big its window is, or where it looked for its key and where it found one -- and whether your text stays on your network.
+A backend is a *preset*: a name over one of three ways of reaching a model. The CLIs (`claude`, `codex`) run an executable; the servers (`lmstudio`, `ollama`, `openai`, `openrouter`) speak the OpenAI API to an address -- the same code with a different endpoint and, for the hosted ones, a key. Local versus remote is configuration, never a different feature. `ccs doctor` builds the configured preset and prints what it says about itself: whether its executable was found, what model is loaded and how big its window is, or where it looked for its key and where it found one -- whether your text stays on your network -- and whether it has tools (`tools: Read,Grep,Edit,Write`, or `no tools: the deep step reaches file, not neighbours`), which is what decides how far the deep step can be allowed to reach.
 
 - `prompt-only` costs nothing and sends nothing. The prompt is written under `~/claude/ccs-merge-rules/_prompts/`, and the report names the file to put the answer in (`<label>.merged-ai.response.json` in the workspace) or you pass `--ai-response FILE`. An answer in the workspace is applied only when `--ai` is on the command line, never by a bare `merge`. It is a mode, not a backend.
 - `claude` runs the Claude Code CLI and asks for Opus 5 (`claude-opus-5`) unless `ai_merge_model` says otherwise -- a merge should not silently inherit whatever model the CLI's session defaults to; `codex` runs the Codex CLI with its own default. Both run in a throwaway directory handed to the child, so a project's own instruction files never leak into a prompt about your configuration. Note that the Claude Code CLI still loads your global `CLAUDE.md` -- on a box with a large one, that is most of the cost of every call. `claude-strict` and `codex-strict` ask for the answer's schema on the command line instead of in the prompt; they are experiments, not the defaults.
@@ -143,5 +158,7 @@ Nothing under the payload checkout is written by `--ai`.
 A second proposal file per backend (the record carries which backend made the one that exists); painting the proposal into BeyondCompare's output pane on `--relaunch` (the injection driver can, and will, in a later pass); a ranking of base candidates by what each would lose (`--base-search`); and the file-to-many-files remap of a monolithic `CLAUDE.md` across the layered components, which is its own design.
 
 **Which backends have been asked for real.** The pipeline is proven against fakes for every transport, and against a golden set of nine conflict shapes in canned mode (`tests/test_golden_ai_merge.py`); running that set live against a preset (`CCS_GOLDEN_AI=lmstudio`) is how a backend earns its place, and the matrix it prints is the record. As of this pass, every preset that is a model has matched all nine fixtures live: claude (Opus 5), codex (its default model), lmstudio (a 27B Qwen) and openrouter (gemini-2.5-flash, nine answers in nine seconds of model time, on the order of a cent). The local model answered the nine in twenty seconds on one GPU, and its one miss on the first pass was the prompt's wording, not the model's judgement -- which is the measurement the golden set exists to take.
+
+**The deep step has its own golden set** (`tests/test_golden_ai_deep.py`): nine merges git completes without a conflict-hunk that are still wrong, or still right, once the diff-hunks are read together -- the b()/c() case and its control, a fix in a function neither side touched, a runbook whose added step cites a renamed term, one case per rung of the ladder, and a fix by deletion. Each is judged at every scope it lists and in both answer forms (a backend with tools editing in place; a server answering with a diff), canned through the real command over fake backends; `CCS_GOLDEN_AI=<preset>` asks a real one and prints `GOLDEN-DEEP | <preset> | <fixture> | scope=<where> form=<tools|no-tools> | <verdict>` per case. As of this pass no backend has been asked for real through the deep step; those witnessed runs are the next thing, and their matrix is the record.
 
 **Two line-selection answers in one run** (`--ai claude,codex`, issue #58) is not built and is refused as such; `--ai claude,deep` is the plan grammar that exists, and the record is already shaped for more (N answers, one chosen), so building the rest later migrates nothing in your workspace.

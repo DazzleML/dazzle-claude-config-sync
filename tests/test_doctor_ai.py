@@ -239,3 +239,24 @@ def test_the_two_spellings_of_prompt_only_are_one():
     library at module scope (the test above); this pins them equal."""
     from dazzle_claude_config import aistep
     assert aistep.PROMPT_ONLY == ailib.PROMPT_ONLY == "prompt-only"
+
+
+def test_doctor_says_whether_the_backend_has_tools_for_the_deep_step(tmp_path, capsys, monkeypatch):
+    """U7: the deep step reaches neighbours and project only with tools.
+    Doctor's backend line says which it is -- the grant the preset carries,
+    or `no tools: the deep step reaches file, not neighbours` -- so a person
+    learns it here rather than from a refused run."""
+    w = _world(tmp_path)
+    (w["user"] / "ccs-config.json").write_text(json.dumps({"ai_merge_backend": "claude"}), encoding="utf-8")
+    _fake_cli(monkeypatch, ready=True)                                 # this fake declares no tools
+    out = _doctor(w, capsys)
+    assert "no tools: the deep step reaches file, not neighbours" in out, out
+
+    class _WithTools(_FakeCli):
+        def capabilities(self, spec):
+            return frozenset({"model", "stream", "tools"})
+
+    from dazzle_claude_config._vendor.ailib import backend as _bm
+    monkeypatch.setitem(_bm._TRANSPORTS, "cli", _WithTools(True))
+    out = _doctor(w, capsys)
+    assert "tools: Read,Grep,Edit,Write" in out and "neighbours and project" in out, out

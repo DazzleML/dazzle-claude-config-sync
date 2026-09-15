@@ -4,6 +4,19 @@ All notable changes to dazzle-claude-config (ccs) are documented here. Format fo
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-09-15
+
+### Added
+- **The words, and the docs for the deep merge.** `docs/ai-merge.md` now opens the feature with the five words the report uses -- a *diff-hunk* is a region one side changed and git took on its own; a *conflict-hunk* is a region both sides changed, with three panes; *the recipe* picks lines inside conflict-hunks; *the deep step* reads the diff-hunks together and may write text; *the ladder* is how far it may reach -- and describes the deep step, the ladder, the two guarantees lines, the keys directory and the deep golden set. A hand-run checklist for the whole slice ships at `tests/checklists/v0.6.7__Feature__the-deep-merge-and-where-keys-live.md`, with a world builder (`tests/one-offs/thinking/deep-merge/build_deep_world.py`) that lays the founding case out for a real backend.
+- **`ccs doctor` says whether a backend has tools.** The backend line ends `tools: Read,Grep,Edit,Write (the deep step may reach neighbours and project)` or `no tools: the deep step reaches file, not neighbours`, so a person learns which scopes a backend can be allowed before a run refuses one.
+
+### Changed
+- **The report speaks in hunks of both kinds.** The count line under a proposal reads `conflict-hunks: 1 -- the model's; 19 lines in diff-hunks git took on its own, never sent`. A merge git completed without a conflict-hunk no longer reads as resolved: the line is `no conflict-hunk; git took the diff-hunks on its own, nothing for the recipe to decide -- add ,deep to read them together`, and the nudge is dropped when the plan already ran the deep step.
+- **`@` and `/` inside an `--ai` step are refused by name.** `--ai deep@file` is refused as `'@' and '/' in a step are reserved for a later per-step latitude syntax`, with today's spelling in the sentence, so no plan comes to depend on the characters meaning something else before a later version gives them a meaning.
+
+### Fixed
+- Two paths the deep step's sandbox had never run now have tests: a component whose live copy is a single file, and a sandbox left behind by an interrupted run, which the next run removes -- worktree and directory -- before building its own.
+
 ## [0.6.6] - 2026-09-15
 
 ### Added
@@ -487,7 +500,8 @@ Fixes both issues 0.3.0 shipped as known, plus five more found by running the to
 - Console scripts `ccs` and `dazzle-claude-config`; stdlib-only, Python 3.10+
 - 53 automated tests + tester-agent exploratory report + human test checklist (`tests/checklists/v0.1.0__Phase1__collect-apply-status-diff.md`)
 
-[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.6...HEAD
+[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.7...HEAD
+[0.6.7]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.6...v0.6.7
 [0.6.6]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.3...v0.6.4

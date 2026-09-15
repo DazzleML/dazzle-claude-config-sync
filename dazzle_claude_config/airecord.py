@@ -174,7 +174,12 @@ def add_answer(rec: Record, **fields) -> int:
     """Append an answer and return its index `n` -- the number in its
     proposal's name (`proposal_path(merged, n)`). `chosen` is NEVER moved
     here: which answer becomes the file is the person's decision at
-    --accept, and a run that appended one must not decide for them."""
+    --accept, and a run that appended one must not decide for them.
+
+    The record is additive: fields this version does not know are kept as
+    given and read back unchanged, so a later axis on an answer (a
+    freedom, a judgement) adds keys and migrates nothing. A reader takes
+    the keys it knows and leaves the rest."""
     a = {"backend": "", "identity": "", "model_used": "", "honoured": [],
          "fingerprint": "", "proposal_sha": "", "created": _now()}
     a.update(fields)

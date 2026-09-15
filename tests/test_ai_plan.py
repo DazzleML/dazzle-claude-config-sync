@@ -163,7 +163,7 @@ def test_parse_plan_refusals_say_why():
         _plan("gpt9")
     with pytest.raises(ValueError, match="gpt9"):
         _plan("claude,deep:gpt9")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="empty step"):        # by name, not as an unknown backend (v0.6.7 sweep, M2)
         _plan("claude,,deep")
 
 
@@ -514,7 +514,7 @@ def test_a_clean_merge_still_gets_the_deep_step_over_gits_own_result_M17(tmp_pat
     rc = main(_ccs(w, "merge", "skills/s.md", "--ai", "claude,deep", "--no-launch"))
     out = capsys.readouterr().out
     assert rc == EXIT_CLEAN, out
-    assert "no hunk both sides changed" in out                   # the recipe had nothing to decide
+    assert "no conflict-hunk" in out                             # the recipe had nothing to decide (U7's wording)
     assert _Fake.calls == ["deep"]                               # so it never asked a model; the deep step did
     assert airecord.proposal_path(w["merged"], 1).read_bytes() == _Fake.deep_writes
     rec = airecord.load(airecord.record_path(w["merged"]))
@@ -562,3 +562,80 @@ def test_63_no_identity_carries_an_empty_field_and_every_part_is_labelled():
             assert "endpoint=" in ident and "command=" not in ident
     assert "key:OPENROUTER_API_KEY" in ailib.spec_for("openrouter").identity()   # the pinned spellings stand
     assert "keyfile:openrouter.env" in ailib.spec_for("openrouter", keys_dir=Path("C:/k")).identity()
+
+
+# -- U7: the latitude design's moves that are code (N1, N3) and the plan's default ---------
+
+def test_reserved_characters_in_a_step_are_refused_by_name_N1():
+    """The latitude design (2026-09-15), move N1: `@` and `/` inside a step
+    token are reserved for a later per-step latitude syntax
+    (`deep@file/minimal`), so nobody's plan comes to depend on them meaning
+    something else. The refusal says so; it is not "unknown backend"."""
+    for token in ("deep@file", "claude,deep@hunk/minimal", "deep:claude/minimal", "claude@file"):
+        with pytest.raises(ValueError, match="reserved for a later per-step latitude syntax") as e:
+            _plan(token)
+        # the sentence carries the spelling that exists today, so the person is
+        # sent somewhere real (v0.6.7 sweep, survivor M3)
+        assert "--ai <preset>,deep --ai-scope <rung>" in str(e.value)
+    assert _plan("claude,deep") == [("recipe", "claude"), ("deep", "claude")]      # the shipped spelling stands
+
+
+_CLEAN_BASE = b"# skill\nintro\n\nrule A\nrule B\nrule C\n\nnotes\n"
+_CLEAN_OURS = b"# skill\nintro, expanded locally\n\nrule A\nrule B\nrule C\n\nnotes\n"
+_CLEAN_THEIRS = b"# skill\nintro\n\nrule A\nrule B\nrule C\n\nnotes, revised upstream\n"
+
+
+def test_a_clean_merge_speaks_in_hunks_of_both_kinds_and_names_the_deep_step_N3(tmp_path, capsys, fake_cli):
+    """The maintainer's vocabulary (2026-09-15): a diff-hunk is a region one
+    side changed and git took on its own; a conflict-hunk is a region both
+    sides changed, with three panes. The clean-merge line says which kind
+    there was none of, which kind git took, and -- when no deep step ran --
+    that `,deep` is what reads the diff-hunks together. That nudge is the
+    founding case's report line: a clean merge is not a resolved one."""
+    w = _world(tmp_path, history=(_CLEAN_BASE, _CLEAN_THEIRS), live=_CLEAN_OURS)
+    rc = main(_ccs(w, "merge", "skills/s.md", "--ai", "claude", "--no-launch"))
+    out = capsys.readouterr().out
+    assert rc == EXIT_CLEAN, out
+    assert "no conflict-hunk" in out and "diff-hunks" in out and "add ,deep" in out, out
+    assert "no hunk both sides changed" not in out
+    # with a deep step in the plan the deep line follows and the nudge is gone
+    w2 = _world(tmp_path / "two", history=(_CLEAN_BASE, _CLEAN_THEIRS), live=_CLEAN_OURS)
+    _Fake.deep_writes = None
+    main(_ccs(w2, "merge", "skills/s.md", "--ai", "claude,deep", "--no-launch"))
+    out2 = capsys.readouterr().out
+    assert "no conflict-hunk" in out2 and "add ,deep" not in out2, out2
+    assert "nothing to change" in out2
+
+
+def test_the_count_line_names_conflict_hunks_and_diff_hunks_N3(tmp_path, capsys, fake_cli):
+    """The recipe's first line under the headline, in the vocabulary: how
+    many conflict-hunks the model was given, how many lines in diff-hunks
+    git took on its own and never sent."""
+    w = _world(tmp_path)
+    main(_ccs(w, "merge", "skills/s.md", "--ai", "claude", "--no-launch"))
+    out = capsys.readouterr().out
+    line = next((ln.strip() for ln in out.splitlines() if ln.strip().startswith("conflict-hunks:")), "")
+    assert line.startswith("conflict-hunks: 1 -- the model's;"), out
+    assert "in diff-hunks git took on its own, never sent" in line, line
+    assert "both sides changed" not in out
+    # a file that is nothing but the conflict-hunk: zero lines in diff-hunks,
+    # and the plural still reads (v0.6.7 sweep, survivor M4)
+    w0 = _world(tmp_path / "zero", history=(b"a\n", b"c\n"), live=b"b\n")
+    main(_ccs(w0, "merge", "skills/s.md", "--ai", "prompt-only", "--no-launch"))
+    out0 = capsys.readouterr().out
+    assert "conflict-hunks: 1 -- the model's; 0 lines in diff-hunks" in out0, out0
+
+
+def test_options_fill_the_recipe_plan_at_construction_so_nothing_falls_back_later(tmp_path):
+    """U7, from the latitude design's note on `AiOptions.plan()`: the
+    pre-plan default is filled in when the options are built, so `steps` is
+    never empty and no caller reaches a defaulted branch by mistake --
+    the shape is impossible rather than handled."""
+    from dazzle_claude_config import aistep
+    opts = aistep.AiOptions(rules_dir=tmp_path, prompts_dir=tmp_path, cache_dir=tmp_path, backend="claude")
+    assert opts.steps == (aistep.AiStep("recipe", "claude"),)
+    assert opts.plan() == opts.steps
+    assert opts.scope == 1                       # hunk: the narrowest rung is the default (v0.6.7 sweep, M10)
+    kept = aistep.AiOptions(rules_dir=tmp_path, prompts_dir=tmp_path, cache_dir=tmp_path, backend="claude",
+                            steps=(aistep.AiStep("recipe", "claude"), aistep.AiStep("deep", "codex")))
+    assert [(s.kind, s.backend) for s in kept.steps] == [("recipe", "claude"), ("deep", "codex")]
