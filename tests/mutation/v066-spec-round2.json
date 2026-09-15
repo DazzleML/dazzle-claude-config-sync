@@ -1,0 +1,9 @@
+{
+  "test_command": ["python", "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", "tests/test_golden_ai_deep.py", "tests/test_airung.py"],
+  "mutations": [
+    {"id": "M02", "file": "dazzle_claude_config/airung.py", "original": "            if r.start <= i1 < r.end:", "mutated": "            if r.start < i1 < r.end:", "note": "an insertion at a region's first line is no longer attributed to that region; it falls through to the last region, changing which region name and rung the edit reports"},
+    {"id": "M08", "file": "dazzle_claude_config/aideep.py", "original": "    if not tools:", "mutated": "    if tools:", "note": "guarantees line: the '-- no tools: the model saw this file and the two diffs only' suffix appears when tools were on and is missing when they were off"},
+    {"id": "M09", "file": "dazzle_claude_config/aideep.py", "original": "        if str(r.get(\"region\", \"\")).strip().lower() == region and region:", "mutated": "        if str(r.get(\"region\", \"\")).strip() == region and region:", "note": "dropped .lower() on the reason's region: a reason whose region differs only in case no longer matches the edit, so the report shows '(no reason given)'"},
+    {"id": "M10", "file": "dazzle_claude_config/aideep.py", "original": "        if isinstance(r, dict) and edit.path.endswith(str(r.get(\"path\", \"\")).strip()) and r.get(\"path\"):", "mutated": "        if isinstance(r, dict) and edit.path.endswith(str(r.get(\"path\", \"\")).strip()):", "note": "removed guard: endswith('') is always true, so a reason with no path is attached to every edit whose region did not match"}
+  ]
+}

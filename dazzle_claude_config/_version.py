@@ -18,14 +18,14 @@ Version levels:
 # Version components - edit these for version bumps
 MAJOR = 0
 MINOR = 6
-PATCH = 5
+PATCH = 6
 PHASE = ""  # Per-MINOR feature set: None, "alpha", "beta", "rc1", etc.
 
 # Project-level phase (independent of version phase)
 PROJECT_PHASE = "alpha"  # "prealpha", "alpha", "beta", "stable", or ""
 
 # Auto-updated by git hooks - do not edit manually
-__version__ = "0.6.5_ccs-ai-pass-1_76-20260909-81a81010"
+__version__ = "0.6.6_ccs-ai-pass-1_77-20260915-66c258a8"
 __app_name__ = "dazzle-claude-config"
 
 

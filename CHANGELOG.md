@@ -4,6 +4,11 @@ All notable changes to dazzle-claude-config (ccs) are documented here. Format fo
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-09-15
+
+### Added
+- **The deep merge's golden set.** `tests/test_golden_ai_deep.py`: nine merges that git completes without a conflict and that are still wrong, or still right, once the two changes are read together -- the maintainer's own b()/c() case in Python and its control; the same defect fixed in a function neither side touched; a Markdown runbook whose added step cites a term the other side renamed, and its control; one case per rung of the ladder (a fix in a section neither side touched, a fix that also edits a neighbouring file, a fix that also edits a file outside the component); and a fix by deletion, whose dropped line the loss check reports at `--accept` without refusing. Each fixture is judged at every scope it lists and in both answer forms where the fixture allows (a backend with tools editing in place; a server answering with a diff), through the real command over fake backends, so the path from a model's answer to the numbered variant, the record and the report is proven before any model is asked. With `CCS_GOLDEN_AI=<preset>` the same fixtures ask a real backend and print one matrix line per case -- `GOLDEN-DEEP | <preset> | <fixture> | scope=<where> form=<tools|no-tools> | <verdict>` -- for the witnessed runs' record; a miss there is a finding for the person to judge, not a failure. A mutation sweep of the code the set fences found three places where the report's fidelity went unasserted (which form answered; whether the model's reason lands on the right edit), and the set now asserts them; the rung classifier gained a test for an insertion at a section's first line.
+
 ## [0.6.5] - 2026-09-09
 
 ### Added
@@ -482,7 +487,8 @@ Fixes both issues 0.3.0 shipped as known, plus five more found by running the to
 - Console scripts `ccs` and `dazzle-claude-config`; stdlib-only, Python 3.10+
 - 53 automated tests + tester-agent exploratory report + human test checklist (`tests/checklists/v0.1.0__Phase1__collect-apply-status-diff.md`)
 
-[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.5...HEAD
+[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.6...HEAD
+[0.6.6]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.3...v0.6.4
 [0.6.3]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.2...v0.6.3

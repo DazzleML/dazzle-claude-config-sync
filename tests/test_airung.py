@@ -324,3 +324,20 @@ def test_an_edit_spanning_two_regions_needs_every_touched_region_anchored_M14():
                     others={}, neighbours=frozenset())
     assert v.needed == 2
     assert v.edits[0].region == "AAA"
+
+
+def test_an_insertion_at_a_regions_first_line_belongs_to_that_region_v066_M02():
+    """v0.6.6 sweep (the deep golden set), survivor M02: `_touched` places
+    an insertion whose point IS a region's first line in that region
+    (`r.start <= i1`), not in the last region of the file. Here the model
+    inserts a line right before the `# B` heading: B holds no anchor, so
+    the edit is rung 2 under B -- not rung 1 under the anchored last
+    section C, which is where the fall-through would put it."""
+    from dazzle_claude_config.airung import needed_rung
+    base = "# A\na\n\n# B\nb\n\n# C\nc\n"
+    mechanical = "# A\na2\n\n# B\nb\n\n# C\nc2\n"                  # A and C are anchored; B is not
+    candidate = "# A\na2\n\nNEW\n# B\nb\n\n# C\nc2\n"                # inserted at B's first line
+    v = needed_rung(label="notes.md", base=base, mechanical=mechanical, candidate=candidate,
+                    others={}, neighbours=frozenset())
+    assert v.needed == 2
+    assert [e.region for e in v.edits] == ["B"]
