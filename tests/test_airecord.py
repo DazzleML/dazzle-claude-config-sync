@@ -303,3 +303,17 @@ def test_an_answer_with_keys_this_version_does_not_know_is_kept_as_it_is_N5(tmp_
     back = airecord.load(p)
     assert back.answers[1]["freedom"] == "minimal" and back.answers[1]["judged"]["by"] == "lmstudio"
     assert airecord.answer_kind({"kind": "recipe", "later": 1}) == "recipe" and airecord.answer_kind({}) == "recipe"
+
+
+def test_the_deep_reply_lives_beside_its_variant_or_under_the_unnumbered_name_v068():
+    """The deep step keeps the backend's raw reply (U8 finding 4): beside
+    the numbered variant when one was staged, under one unnumbered name
+    when none was -- refused, empty, or beyond the scope -- so a refused
+    answer can be read afterwards. The recipe's carried answer keeps its
+    own, older name."""
+    merged = Path("ws") / "skills__s.py.merged"
+    assert airecord.reply_path(merged).name == "skills__s.py.merged-ai.deep-reply.txt"
+    assert airecord.reply_path(merged, 1).name == "skills__s.py.merged-ai.1.deep-reply.txt"
+    assert airecord.reply_path(merged, 2).name == "skills__s.py.merged-ai.2.deep-reply.txt"
+    assert airecord.reply_path(merged).parent == merged.parent
+    assert airecord.reply_path(merged, 1) != airecord.response_path(merged)

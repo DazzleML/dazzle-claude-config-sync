@@ -34,6 +34,7 @@ means to ask twice.
 from __future__ import annotations
 
 import difflib
+import os
 import re
 import subprocess
 import sys
@@ -54,6 +55,8 @@ SCOPE_PHRASES = {
 }
 ANSWER_DIR = "answer"
 _DIFF_BLOCK = re.compile(r"```diff[ \t]*\n(.*?)```", re.S)
+#: A diff block with no hunk line is an empty diff, whatever headers it carries.
+_HUNK_LINE = re.compile(r"^@@ ", re.M)
 #: How much of an earlier variant the prompt shows.
 VARIANT_LINES = 400
 
@@ -191,11 +194,19 @@ def _apply(sb: aisandbox.Sandbox, name: str, mechanical: bytes, patch: str) -> t
     (d / name).write_bytes(mechanical)
     body = patch if patch.endswith("\n") else patch + "\n"
     (d / "answer.patch").write_text(body, encoding="utf-8", newline="\n")
-    check = _git(d, "apply", "--check", "answer.patch")
+    # A model's hunk counts are often off by one, and a model may write a
+    # hunk with no context lines at all (one did, on purpose, to dodge blank
+    # context lines a chat layer might trim). --recount makes git recompute
+    # the counts from the body; --unidiff-zero lets a zero-context hunk apply
+    # by line number. Neither relaxes the removed lines, which git still
+    # verifies against the file. Measured on git 2.52 against the model's
+    # real answers on 2026-09-16 (the results file of run 01, finding 2).
+    flags = ["--recount", "--unidiff-zero"]
+    check = _git(d, "apply", "--check", *flags, "answer.patch")
     if check.returncode != 0:
         first = (check.stderr or check.stdout).strip().splitlines()
         return b"", f"the diff does not apply to the merged file: {first[0] if first else 'git apply --check failed'}"
-    applied = _git(d, "apply", "answer.patch")
+    applied = _git(d, "apply", *flags, "answer.patch")
     if applied.returncode != 0:
         first = (applied.stderr or applied.stdout).strip().splitlines()
         return b"", f"git apply failed: {first[0] if first else 'no message'}"
@@ -277,6 +288,12 @@ def deep_step(*, label: str, base: bytes, ours: bytes, theirs: bytes, mechanical
             out.status = "deep-failed"
             out.error = resp.error
             return out
+        # The raw reply is kept (finding 4, 2026-09-16): under the unnumbered
+        # name now, moved beside the variant if one is staged, so an answer
+        # that was refused, empty or beyond the scope can still be read.
+        out.reply = airecord.reply_path(merged)
+        out.reply.parent.mkdir(parents=True, exist_ok=True)
+        out.reply.write_text(resp.text or "", encoding="utf-8", newline="\n")
         data = ailib.parsers.json_block(resp.text)
         data = data if isinstance(data, dict) else {}
         out.summary = str(data.get("summary") or "")
@@ -298,7 +315,11 @@ def deep_step(*, label: str, base: bytes, ours: bytes, theirs: bytes, mechanical
                 out.error = f"{step.backend} answered without a ```diff block -- nothing to apply"
                 return out
             patch = blocks[-1]
-            if not patch.strip():
+            if not patch.strip() or not _HUNK_LINE.search(patch):
+                # An empty block, or one holding only the ---/+++ headers and no
+                # hunk: both are the model's "nothing to change" (the prompt asks
+                # for an EMPTY diff block, and a real model wrote the headers),
+                # never a patch for git to refuse (finding 8, 2026-09-16).
                 candidate, touched, others = mechanical, [], {}
             else:
                 candidate, why = _apply(sb, Path(sb.payload_rel).name, mechanical, patch)
@@ -350,6 +371,12 @@ def deep_step(*, label: str, base: bytes, ours: bytes, theirs: bytes, mechanical
         variant.write_bytes(candidate)
         airecord.write(rec_path, rec)
         out.variant = variant
+        numbered = airecord.reply_path(merged, n)
+        try:
+            os.replace(out.reply, numbered)                 # the reply takes its variant's number
+            out.reply = numbered
+        except OSError:
+            pass                                            # the unnumbered copy still stands
         out.record = rec
         out.status = "deep-proposed"
         if tripwire is not None:

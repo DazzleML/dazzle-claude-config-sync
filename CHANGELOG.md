@@ -4,6 +4,16 @@ All notable changes to dazzle-claude-config (ccs) are documented here. Format fo
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-09-16
+
+### Fixed
+- **A server backend's diff is taken the way a model writes it.** The deep step applies a no-tools answer with git's counts recomputed and zero-context hunks allowed (`git apply --recount --unidiff-zero`): a hunk whose line counts are off by one, or a hunk with no context lines, now applies, and a hunk that removes a line the file does not have is still refused. Found in the first witnessed runs on a local model: its right answer to the founding case was refused twice for a count that was one too many, and once, in a chat, for choosing zero context on purpose.
+- **"Nothing to change" answered as a diff block holding only the `---`/`+++` header lines is no change**, not a patch for git to refuse. The prompt asks for an empty diff block; a real model wrote the headers, and the control case was reported `NOT KEPT` where `nothing to change` was right.
+- **The deep step keeps the model's raw reply**, beside its variant (`<file>.merged-ai.1.deep-reply.txt`) or, when no variant was staged, under `<file>.merged-ai.deep-reply.txt`; the report names the file under a `NOT KEPT` or `nothing to change` line. Before, a refused answer left only git's first line about it.
+
+### Added
+- Three fixtures in the deep golden set holding a real model's answer shapes verbatim -- the headers-only empty diff, the miscounted context hunk, the zero-context hunk -- judged in the no-tools form and left out of the live matrix. Four one-off probes under `tests/one-offs/thinking/deep-merge/`: capture the deep prompt without a model, replay a reply through the command, run the command with the reply kept, and check a hunk against git's flags. The witnessed runs' results file, `tests/checklists/results/v0.6.7__Feature__the-deep-merge-and-where-keys-live__run-01.md`.
+
 ## [0.6.7] - 2026-09-15
 
 ### Added
@@ -500,7 +510,8 @@ Fixes both issues 0.3.0 shipped as known, plus five more found by running the to
 - Console scripts `ccs` and `dazzle-claude-config`; stdlib-only, Python 3.10+
 - 53 automated tests + tester-agent exploratory report + human test checklist (`tests/checklists/v0.1.0__Phase1__collect-apply-status-diff.md`)
 
-[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.7...HEAD
+[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.8...HEAD
+[0.6.8]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.7...v0.6.8
 [0.6.7]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.6...v0.6.7
 [0.6.6]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.4...v0.6.5

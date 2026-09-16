@@ -40,6 +40,72 @@ ANSWER_JSON = json.dumps({"summary": "b() now adapts to the tuple c() returns",
                                      "reason": "c() returns a pair now; doubling a tuple repeats it"}]})
 
 
+# -- the no-tools apply, against the shapes a real model wrote (v0.6.8, U8) ------------------
+#
+# qwen3.8-27b's answers on 2026-09-16, verbatim: a context hunk whose header
+# count is off by one, and a zero-context hunk. Both are right answers; both
+# were refused by `git apply` as the step called it. The third test is the
+# guard the other way: the flags that take those must not take a hunk whose
+# removed line is not in the file.
+
+FIXED_UNPACKED = MERGED_BROKEN.replace("    v = c(x)\n    return v * 2\n",
+                                       "    v1, v2 = c(x)\n    return (v1 * 2, v2 * 2)\n")
+MISCOUNTED_DIFF = "\n".join([
+    "--- a/s.py", "+++ b/s.py", "@@ -5,7 +5,8 @@", " ", " def b(x):", "-    v = c(x)", "-    return v * 2",
+    "+    v1, v2 = c(x)", "+    return (v1 * 2, v2 * 2)", " ", " ", " def a(x):", ""])
+ZERO_CONTEXT_DIFF = "\n".join([
+    "--- a/s.py", "+++ b/s.py", "@@ -7,1 +7,1 @@", "-    return v * 2", "+    return (v[0] * 2, v[1] * 2)", ""])
+WRONG_LINE_DIFF = "\n".join([
+    "--- a/s.py", "+++ b/s.py", "@@ -7,1 +7,1 @@", "-    return v * 3", "+    return (v[0] * 2, v[1] * 2)", ""])
+
+
+class _Root:
+    """The one thing `_apply` reads from a sandbox."""
+    def __init__(self, root: Path) -> None:
+        self.root = root
+
+
+def test_apply_takes_a_hunk_whose_count_is_off_by_one_v068(tmp_path):
+    from dazzle_claude_config import aideep
+    assert FIXED_UNPACKED != MERGED_BROKEN
+    got, why = aideep._apply(_Root(tmp_path), "s.py", MERGED_BROKEN.encode(), MISCOUNTED_DIFF)
+    assert why == "", why
+    assert got.decode().replace("\r\n", "\n") == FIXED_UNPACKED
+
+
+def test_apply_takes_a_zero_context_hunk_v068(tmp_path):
+    from dazzle_claude_config import aideep
+    got, why = aideep._apply(_Root(tmp_path), "s.py", MERGED_BROKEN.encode(), ZERO_CONTEXT_DIFF)
+    assert why == "", why
+    assert got.decode().replace("\r\n", "\n") == FIXED_BROKEN
+
+
+def test_apply_still_refuses_a_hunk_whose_removed_line_is_not_in_the_file_v068(tmp_path):
+    """--recount and --unidiff-zero relax the counts and the context, never
+    the removed lines: a hunk that deletes a line the file does not have is
+    still refused, with git's sentence."""
+    from dazzle_claude_config import aideep
+    got, why = aideep._apply(_Root(tmp_path), "s.py", MERGED_BROKEN.encode(), WRONG_LINE_DIFF)
+    assert got == b"" and "does not apply" in why, why
+
+
+def test_a_backend_failure_keeps_no_reply_and_the_outcome_names_none_v068_M6(tmp_path, fakes):
+    """M6 of the 0.6.8 sweep: the reply is kept only after the backend
+    answered. A failure -- a timeout, an unreachable server -- has no text
+    to keep, and an empty reply file the report then pointed at would
+    mislead. Killed by asserting both the file and the outcome's pointer
+    are absent."""
+    from dazzle_claude_config import airecord
+    w = _world(tmp_path)
+    _NoTools.fail = ("no answer from fake-27b within 120s -- if it is generating slowly, the usual cause "
+                     "is a context window far larger than the prompt, not the model itself")
+    out = _deep(w, backend="lmstudio", scope=1)
+    assert out.status == "deep-failed" and "within 120s" in out.error and _NoTools.calls == 1
+    assert out.reply is None
+    assert not airecord.reply_path(w["merged"]).exists()
+    assert not airecord.reply_path(w["merged"], 1).exists()
+
+
 # -- a world: a git checkout and a live component -----------------------------------
 
 def _git(cwd: Path, *args: str) -> str:
@@ -125,6 +191,7 @@ class _NoTools:
     """A fake `openai_compat` transport: no tools, answers with a diff."""
     diff: str = HAND_DIFF
     calls: int = 0
+    fail: str = ""                 # when set, the backend fails with this sentence instead of answering
 
     def probe(self, spec):
         from dazzle_claude_config._vendor.ailib.types import Readiness
@@ -137,6 +204,8 @@ class _NoTools:
         from dazzle_claude_config._vendor.ailib.types import Response
         _NoTools.calls += 1
         assert not req.workdir, "the no-tools form never names a workdir"
+        if _NoTools.fail:
+            return Response("failed", error=_NoTools.fail)
         return Response("answered", text="```diff\n" + _NoTools.diff + "```\n\n```json\n" + ANSWER_JSON + "\n```\n",
                         model_used="fake-27b", honoured=("model",))
 
@@ -148,7 +217,7 @@ def fakes(monkeypatch):
     monkeypatch.setitem(_bm._TRANSPORTS, "cli", _Tools())
     monkeypatch.setitem(_bm._TRANSPORTS, "openai_compat", _NoTools())
     _Tools.script, _Tools.escape, _Tools.calls, _Tools.seen = [], None, 0, {}
-    _NoTools.diff, _NoTools.calls = HAND_DIFF, 0
+    _NoTools.diff, _NoTools.calls, _NoTools.fail = HAND_DIFF, 0, ""
 
 
 def _opts(w, backend="claude"):

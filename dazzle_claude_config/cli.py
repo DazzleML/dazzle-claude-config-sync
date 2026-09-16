@@ -1861,6 +1861,8 @@ def _print_ai_report(r, args) -> None:
             print(c("dim", f"ai  {label} -- nothing to change (deep via {out.backend}): the merged file stands"))
             if out.warning:
                 print(c("dim", f"    backend: {out.warning}"))
+            if getattr(out, "reply", None) is not None:
+                print(c("dim", f"    reply: {out.reply.name} -- why, in the model's words, kept beside your result"))
         elif out.status in ("deep-failed", "deep-escaped"):
             print(f"{c('bold_red', 'NOT KEPT')} {label} "
                   + c("dim", f"-- {out.error} (deep via {out.backend})"))
@@ -1868,6 +1870,8 @@ def _print_ai_report(r, args) -> None:
                 print("    " + c("yellow", line))
             for e in out.escapes:
                 print("    " + c("red", f"changed outside the sandbox: {e}"))
+            if getattr(out, "reply", None) is not None:
+                print(c("dim", f"    reply: {out.reply.name} -- what the model answered, kept beside your result"))
         elif out.status == "deep-skipped":
             print(f"{c('yellow', 'ai skipped')} {label} "
                   + c("dim", f"-- {out.error} (deep via {out.backend})"))

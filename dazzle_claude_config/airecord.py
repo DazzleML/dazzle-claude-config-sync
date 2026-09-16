@@ -48,6 +48,7 @@ ORIGIN = "ai"
 PROPOSAL_SUFFIX = "-ai"
 RECORD_SUFFIX = "-ai.record.json"
 RESPONSE_SUFFIX = "-ai.response.json"
+DEEP_REPLY_SUFFIX = ".deep-reply.txt"
 
 #: The sides a proposal was made from, as the display names them.
 OURS_NAME = "your live file"
@@ -81,6 +82,15 @@ def response_path(merged: Path) -> Path:
     """``<label>.merged-ai.response.json`` -- where a carried-elsewhere
     answer is placed for ``--ai`` to apply."""
     return merged.with_name(merged.name + RESPONSE_SUFFIX)
+
+
+def reply_path(merged: Path, n: int = 0) -> Path:
+    """Where the deep step keeps the backend's raw reply: beside its
+    variant, ``<label>.merged-ai.<n>.deep-reply.txt``, when one was staged;
+    under ``<label>.merged-ai.deep-reply.txt`` when none was -- refused,
+    empty, or beyond the scope -- so a refused answer can be read afterwards
+    instead of only git's first line about it (U8, 2026-09-16)."""
+    return merged.with_name(merged.name + PROPOSAL_SUFFIX + (f".{n}" if n else "") + DEEP_REPLY_SUFFIX)
 
 
 def _now() -> str:

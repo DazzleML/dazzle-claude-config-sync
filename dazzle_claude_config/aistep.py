@@ -152,6 +152,7 @@ class AiOutcome:
     escapes: list[str] = field(default_factory=list)   # REAL files the backend changed (deep-escaped)
     tripwire: list[str] = field(default_factory=list)  # the loss check's lines: recorded, never the gate
     warning: str = ""              # the backend's readiness warning (#62)
+    reply: Path | None = None      # the backend's raw reply, kept beside the variant or under one name
 
 
 def _safe(label: str) -> str:

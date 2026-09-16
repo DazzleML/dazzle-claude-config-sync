@@ -104,6 +104,29 @@ NOTES_FIXED_MD = MERGED_MD.replace(b"Nothing yet.", b"The report was renamed to 
 #: wrote is gone, which is exactly what the loss check looks for (C8: a tripwire)
 DROPPED_MD = MERGED_MD.replace(b"3. Open the report.\n", b"")
 
+# -- the model's real shapes (U8, 2026-09-16) ---------------------------------------------
+#
+# What qwen3.8-27b actually answered in the witnessed runs, verbatim, and
+# what today's capture did with each: the no-tools form must be judged
+# against a model's diff, not only difflib's. Three shapes, three refusals
+# of a right answer (results file run-01, findings 2 and 8):
+#
+#   headers only   -- "nothing to change" as `--- a/s.py` / `+++ b/s.py` and no
+#                     hunk; the prompt asked for an EMPTY diff block and this is
+#                     one, but git refuses a patch with no hunks
+#   miscounted     -- a context hunk whose header says +5,8 for seven lines
+#                     (the unpacking fix); git: "corrupt patch"
+#   zero context   -- the golden fix as `@@ -7,1 +7,1 @@` with no context lines,
+#                     chosen by the model on purpose; git needs --unidiff-zero
+FIXED_UNPACKED = MERGED_BROKEN.replace(b"    v = c(x)\n    return v * 2\n",
+                                       b"    v1, v2 = c(x)\n    return (v1 * 2, v2 * 2)\n")
+HEADERS_ONLY_DIFF = "--- a/s.py\n+++ b/s.py\n"
+MISCOUNTED_DIFF = "\n".join([
+    "--- a/s.py", "+++ b/s.py", "@@ -5,7 +5,8 @@", " ", " def b(x):", "-    v = c(x)", "-    return v * 2",
+    "+    v1, v2 = c(x)", "+    return (v1 * 2, v2 * 2)", " ", " ", " def a(x):", ""])
+ZERO_CONTEXT_DIFF = "\n".join([
+    "--- a/s.py", "+++ b/s.py", "@@ -7,1 +7,1 @@", "-    return v * 2", "+    return (v[0] * 2, v[1] * 2)", ""])
+
 PY = "s.py"
 MD = "s.md"
 
@@ -121,6 +144,11 @@ def _answer(summary: str, *edits: tuple[str, str, str]) -> dict:
 # the right answer is no change); scopes: the status the step must reach at
 # each scope tried; needed: the rung the answer needs; answer: the model's
 # closing JSON; report: substrings the report must print, per scope.
+# Optional: nt_diff, a verbatim no-tools diff in place of the derived one
+# (a model's real shape); forms, which answer forms run the fixture (both by
+# default); live, whether the live runner asks a backend for it (yes by
+# default -- a shape fixture asks the same question as its parent and is
+# left out of the matrix).
 
 def _payload(name: str) -> str:
     return f"checkout/dotclaude/skills/{name}"
@@ -220,6 +248,35 @@ FIXTURES: dict[str, dict] = {
         answer=_answer("dropped the step that named a file which no longer exists",
                        (MD, "Steps", "the step pointed at a name Terms retired")),
         report={"hunk": ["Steps (rung 1)", "needed: hunk"]}),
+
+    # -- the model's real shapes: the no-tools form only, never asked live --------------
+    "bc-python-control-headers-only": dict(
+        cells="the control answered the way the model does: an empty diff that is two header lines and no hunk -- no change, not a refusal (v0.6.8, finding 8)",
+        name=PY, base=BASE, ours=OURS, theirs=THEIRS_FINE, mechanical=MERGED_FINE,
+        writes={}, expected=None, nt_diff=HEADERS_ONLY_DIFF, forms=("no-tools",), live=False,
+        scopes={"hunk": "deep-empty"}, needed="none",
+        answer=_answer("Nothing needed changing"),
+        report={"hunk": ["nothing to change"]}),
+
+    "bc-python-broken-miscounted-hunk": dict(
+        cells="the founding case fixed by unpacking, as a context hunk whose count is off by one -- applies (v0.6.8, finding 2)",
+        name=PY, base=BASE, ours=OURS, theirs=THEIRS_BROKEN, mechanical=MERGED_BROKEN,
+        writes={_payload(PY): FIXED_UNPACKED}, expected=FIXED_UNPACKED,
+        nt_diff=MISCOUNTED_DIFF, forms=("no-tools",), live=False,
+        scopes={"hunk": "deep-proposed"}, needed="hunk",
+        answer=_answer("Updated b(x) to unpack the tuple returned by c(x) and double each element individually",
+                       (PY, "def b(x)", "c(x) now returns a tuple, so v * 2 would repeat the tuple instead of scaling values")),
+        report={"hunk": ["b (rung 1): c(x) now returns a tuple", "needed: hunk", "files touched: 1"]}),
+
+    "bc-python-broken-zero-context": dict(
+        cells="the golden fix as a zero-context hunk, the model's own choice to dodge blank context lines -- applies (v0.6.8, finding 2)",
+        name=PY, base=BASE, ours=OURS, theirs=THEIRS_BROKEN, mechanical=MERGED_BROKEN,
+        writes={_payload(PY): FIXED_BROKEN}, expected=FIXED_BROKEN,
+        nt_diff=ZERO_CONTEXT_DIFF, forms=("no-tools",), live=False,
+        scopes={"hunk": "deep-proposed"}, needed="hunk",
+        answer=_answer("Changed b to double each component of c's tuple result instead of repeating the tuple",
+                       (PY, "b", "c now returns a two-element tuple, so arithmetic doubling must be componentwise")),
+        report={"hunk": ["b (rung 1): c now returns a two-element tuple", "needed: hunk"]}),
 }
 
 ALL = dict(FIXTURES)
@@ -238,8 +295,12 @@ def _cases() -> list[tuple[str, str, str, str]]:
     out = []
     for name, fx in ALL.items():
         single_file = all(p == _payload(fx["name"]) for p in fx["writes"])
+        forms = fx.get("forms", ("tools", "no-tools"))
         for scope, status in fx["scopes"].items():
-            out.append((name, scope, "tools", status))
+            if "tools" in forms:
+                out.append((name, scope, "tools", status))
+            if "no-tools" not in forms:
+                continue
             if _rung(scope) >= 3:
                 out.append((name, scope, "no-tools", "refused"))
             elif single_file:
@@ -366,7 +427,10 @@ def _script(fx: dict, form: str) -> str:
     if form == "tools":
         _Tools.writes, _Tools.answer = dict(fx["writes"]), fx["answer"]
         return "claude"
-    _NoTools.diff = _diff(fx["name"], fx["mechanical"], fx["expected"]) if fx["expected"] is not None else ""
+    if fx.get("nt_diff") is not None:
+        _NoTools.diff = fx["nt_diff"]                                   # a model's real shape, verbatim
+    else:
+        _NoTools.diff = _diff(fx["name"], fx["mechanical"], fx["expected"]) if fx["expected"] is not None else ""
     _NoTools.answer = fx["answer"]
     return "lmstudio"
 
@@ -411,6 +475,16 @@ def _check(w: dict, fx: dict, scope: str, status: str, out: str, rc: int, form: 
     assert _lf(w["live_file"].read_bytes()) == _lf(fx["ours"]), "nothing is ever installed by a run"
     for s in fx.get("report", {}).get(scope, []) if status != "refused" else []:
         assert s in out, f"report lacks {s!r}:\n{out}"
+    # the raw reply is kept (v0.6.8, finding 4): beside its variant when one was
+    # staged, under the unnumbered name when none was; never when nothing was asked
+    kept = airecord.reply_path(w["merged"], 1 if status == "deep-proposed" else 0)
+    if status == "refused":
+        assert not kept.exists(), "no reply to keep: the backend was never asked"
+    else:
+        assert kept.is_file(), f"the model's reply was not kept at {kept.name}:\n{out}"
+        assert "```json" in kept.read_text(encoding="utf-8"), "the kept reply is the backend's text, whole"
+        if status in ("deep-failed", "deep-empty"):
+            assert f"reply: {kept.name}" in out, f"the report does not name the kept reply:\n{out}"
 
 
 def test_canned(tmp_path, capsys, fakes, case):
@@ -474,7 +548,7 @@ def _verdict(fx: dict, status: str, out: str, variant: Path) -> str:
     return "UNKNOWN"
 
 
-LIVE_CASES = [(n, s, st) for n, fx in ALL.items() for s, st in fx["scopes"].items()]
+LIVE_CASES = [(n, s, st) for n, fx in ALL.items() if fx.get("live", True) for s, st in fx["scopes"].items()]
 
 
 @pytest.mark.skipif(not os.environ.get("CCS_GOLDEN_AI"),
