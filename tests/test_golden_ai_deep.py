@@ -126,6 +126,21 @@ MISCOUNTED_DIFF = "\n".join([
     "+    v1, v2 = c(x)", "+    return (v1 * 2, v2 * 2)", " ", " ", " def a(x):", ""])
 ZERO_CONTEXT_DIFF = "\n".join([
     "--- a/s.py", "+++ b/s.py", "@@ -7,1 +7,1 @@", "-    return v * 2", "+    return (v[0] * 2, v[1] * 2)", ""])
+#: A whole reply, verbatim in shape from Part B's `bc-python-fix-in-a@file` line
+#: (2026-09-16 03:44): a bare snippet, then the real patch, then another
+#: snippet, then the json. The capture must take the block WITH the hunk,
+#: not the last block; taking the last one read a fix as "nothing to change".
+THREE_BLOCKS_REPLY = (
+    "The two changes are semantically inconsistent. The smallest edit is in `b`:\n\n"
+    "```diff\n def b(x):\n-    v = c(x)\n-    return v * 2\n+    v1, v2 = c(x)\n+    return (v1 * 2, v2 * 2)\n```\n\n"
+    "As a unified diff against the merged file:\n\n"
+    "```diff\n" + MISCOUNTED_DIFF + "```\n\n"
+    "An alternative would be:\n\n"
+    "```diff\n def b(x):\n-    v = c(x)\n-    return v * 2\n+    return tuple(vi * 2 for vi in c(x))\n```\n\n"
+    "```json\n" + json.dumps({"summary": "Fixed semantic conflict where b(x) multiplied a tuple by an integer",
+                              "edits": [{"path": "s.py", "region": "def b(x)",
+                                         "reason": "Unpacked the tuple returned by c(x) and scaled each element"}]})
+    + "\n```\n")
 
 PY = "s.py"
 MD = "s.md"
@@ -268,6 +283,16 @@ FIXTURES: dict[str, dict] = {
                        (PY, "def b(x)", "c(x) now returns a tuple, so v * 2 would repeat the tuple instead of scaling values")),
         report={"hunk": ["b (rung 1): c(x) now returns a tuple", "needed: hunk", "files touched: 1"]}),
 
+    "bc-python-broken-three-blocks": dict(
+        cells="the fix as the middle of three diff blocks, the last a bare snippet with no hunk: the block WITH the hunk is applied (v0.6.9, finding 10)",
+        name=PY, base=BASE, ours=OURS, theirs=THEIRS_BROKEN, mechanical=MERGED_BROKEN,
+        writes={_payload(PY): FIXED_UNPACKED}, expected=FIXED_UNPACKED,
+        nt_reply=THREE_BLOCKS_REPLY, forms=("no-tools",), live=False,
+        scopes={"hunk": "deep-proposed"}, needed="hunk",
+        answer={"summary": "Fixed semantic conflict where b(x) multiplied a tuple by an integer",
+                "edits": [{"path": "s.py", "region": "def b(x)", "reason": "Unpacked the tuple returned by c(x) and scaled each element"}]},
+        report={"hunk": ["b (rung 1): Unpacked the tuple", "needed: hunk", "files touched: 1"]}),
+
     "bc-python-broken-zero-context": dict(
         cells="the golden fix as a zero-context hunk, the model's own choice to dodge blank context lines -- applies (v0.6.8, finding 2)",
         name=PY, base=BASE, ours=OURS, theirs=THEIRS_BROKEN, mechanical=MERGED_BROKEN,
@@ -389,8 +414,10 @@ class _Tools:
 
 class _NoTools:
     """A fake `openai_compat` transport: no tools; answers the deep prompt
-    with the fixture's diff (empty when the right answer is no change)."""
+    with the fixture's diff (empty when the right answer is no change), or
+    with a whole reply verbatim when the fixture gives one (`nt_reply`)."""
     diff: str = ""
+    reply: str = ""
     answer: dict = {}
     calls: list[str] = []
 
@@ -406,9 +433,9 @@ class _NoTools:
         assert "the deep step" in req.prompt.splitlines()[0], "a deep golden fixture merges clean: the recipe never asks"
         assert not req.workdir, "the no-tools form never names a workdir"
         _NoTools.calls.append("deep")
-        return Response("answered", text="```diff\n" + _NoTools.diff + "```\n\n```json\n"
-                                         + json.dumps(_NoTools.answer) + "\n```\n",
-                        model_used="fake-27b", honoured=("model",))
+        text = _NoTools.reply or ("```diff\n" + _NoTools.diff + "```\n\n```json\n"
+                                  + json.dumps(_NoTools.answer) + "\n```\n")
+        return Response("answered", text=text, model_used="fake-27b", honoured=("model",))
 
 
 @pytest.fixture
@@ -418,7 +445,7 @@ def fakes(monkeypatch):
     monkeypatch.setitem(_bm._TRANSPORTS, "cli", _Tools())
     monkeypatch.setitem(_bm._TRANSPORTS, "openai_compat", _NoTools())
     _Tools.writes, _Tools.answer, _Tools.calls = {}, {}, []
-    _NoTools.diff, _NoTools.answer, _NoTools.calls = "", {}, []
+    _NoTools.diff, _NoTools.reply, _NoTools.answer, _NoTools.calls = "", "", {}, []
     monkeypatch.delenv("CCS_AI_MERGE_BACKEND", raising=False)
 
 
@@ -427,6 +454,7 @@ def _script(fx: dict, form: str) -> str:
     if form == "tools":
         _Tools.writes, _Tools.answer = dict(fx["writes"]), fx["answer"]
         return "claude"
+    _NoTools.reply = fx.get("nt_reply") or ""                          # a whole reply, verbatim
     if fx.get("nt_diff") is not None:
         _NoTools.diff = fx["nt_diff"]                                   # a model's real shape, verbatim
     else:
@@ -533,6 +561,18 @@ def _line(preset: str, model: str, name: str, scope: str, form: str, verdict: st
     return f"GOLDEN-DEEP | {who} | {name} | scope={scope} form={form} | {verdict}"
 
 
+def _form_of(preset: str) -> str:
+    """The answer form is the BACKEND's, not the report's: a `nothing to
+    change` line prints no guarantees sentence, so reading the form off the
+    output labelled three of Part B's lines `form=tools` on a server backend
+    (2026-09-16). Ask the preset's transport what it can do."""
+    from types import SimpleNamespace
+    from dazzle_claude_config import ailib
+    opts = SimpleNamespace(backend=preset, endpoint=None, model=None, api_key_env=None, api_key_file=None,
+                           keys_dir=None)
+    return "tools" if "tools" in ailib.build_backend(opts).capabilities else "no-tools"
+
+
 def _verdict(fx: dict, status: str, out: str, variant: Path) -> str:
     if "has no tools" in out:
         return "REFUSED (no tools at this scope)"
@@ -566,7 +606,7 @@ def test_live(tmp_path, capsys, live_case):
     rc = _run(w, preset, scope)
     out = capsys.readouterr().out
     assert rc in (EXIT_CLEAN, EXIT_DRIFT), out
-    form = "no-tools" if "no tools" in out else "tools"
+    form = _form_of(preset)
     verdict = _verdict(fx, status, out, airecord.proposal_path(w["merged"], 1))
     line = _line(preset, os.environ.get("CCS_GOLDEN_MODEL", ""), name, scope, form, verdict)
     assert LINE_SHAPE.match(line), line
@@ -577,6 +617,16 @@ def test_live(tmp_path, capsys, live_case):
             f.write(line + "\n")
     with capsys.disabled():
         print(line)
+
+
+def test_the_form_word_comes_from_the_backend_not_the_report_v069():
+    """Part B's `bc-python-control@hunk` line read `form=tools` on lmstudio
+    because the report's `nothing to change` line has no guarantees sentence
+    to read "no tools" off. The form is a property of the preset."""
+    assert _form_of("lmstudio") == "no-tools"
+    assert _form_of("openrouter") == "no-tools"
+    assert _form_of("claude") == "tools"
+    assert _form_of("codex") == "tools"
 
 
 def test_the_matrix_line_names_scope_and_form_as_separate_words():

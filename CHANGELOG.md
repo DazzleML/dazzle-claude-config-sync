@@ -4,6 +4,15 @@ All notable changes to dazzle-claude-config (ccs) are documented here. Format fo
 
 ## [Unreleased]
 
+## [0.6.9] - 2026-09-16
+
+### Fixed
+- **The diff block with the hunk is the answer, not the last block.** Models write explanatory snippets in diff fences before and after their real patch; the deep step took the last block, and 0.6.8's rule that a hunkless block means "nothing to change" then reported a real fix as no change on a broken file. Now the last block carrying a hunk is applied, and when no block has one the model's own closing JSON decides: no edits declared is `nothing to change`; edits declared with nothing applicable is `NOT KEPT ... no hunk to apply`, naming what the model said it edited, with the reply kept beside your result. Found by the golden matrix's `bc-python-fix-in-a@file` line on a local model.
+- The live golden runner's `form=` word now comes from the backend's capabilities, not from the report: a `nothing to change` line prints no guarantees sentence, and three of a server backend's lines were labelled `form=tools`.
+
+### Added
+- A golden fixture holding that three-block reply verbatim, and three unit tests on which block is the answer.
+
 ## [0.6.8] - 2026-09-16
 
 ### Fixed
@@ -510,7 +519,8 @@ Fixes both issues 0.3.0 shipped as known, plus five more found by running the to
 - Console scripts `ccs` and `dazzle-claude-config`; stdlib-only, Python 3.10+
 - 53 automated tests + tester-agent exploratory report + human test checklist (`tests/checklists/v0.1.0__Phase1__collect-apply-status-diff.md`)
 
-[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.8...HEAD
+[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.9...HEAD
+[0.6.9]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.8...v0.6.9
 [0.6.8]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.7...v0.6.8
 [0.6.7]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.6...v0.6.7
 [0.6.6]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.5...v0.6.6

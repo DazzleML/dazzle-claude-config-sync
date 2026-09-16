@@ -314,20 +314,34 @@ def deep_step(*, label: str, base: bytes, ours: bytes, theirs: bytes, mechanical
                 out.status = "deep-failed"
                 out.error = f"{step.backend} answered without a ```diff block -- nothing to apply"
                 return out
-            patch = blocks[-1]
-            if not patch.strip() or not _HUNK_LINE.search(patch):
-                # An empty block, or one holding only the ---/+++ headers and no
-                # hunk: both are the model's "nothing to change" (the prompt asks
-                # for an EMPTY diff block, and a real model wrote the headers),
-                # never a patch for git to refuse (finding 8, 2026-09-16).
-                candidate, touched, others = mechanical, [], {}
-            else:
-                candidate, why = _apply(sb, Path(sb.payload_rel).name, mechanical, patch)
+            # The answer is the last block WITH a hunk line. A model writes
+            # explanatory snippets in ```diff fences before and after its real
+            # patch (one did: snippet, patch, snippet), so "the last block" is
+            # not the answer, and 0.6.8's "no @@ line is empty" then reported a
+            # fix as nothing to change (finding 10, 2026-09-16). When no block
+            # has a hunk: an EMPTY block (blank, or only the ---/+++ headers) is
+            # the prompt's own "nothing to change" signal and wins (finding 8);
+            # a snippet -- content with no hunk -- defers to the model's json:
+            # no edits declared is no change, edits declared with nothing
+            # applicable is a refusal that says so.
+            hunked = [b for b in blocks if _HUNK_LINE.search(b)]
+            empty = all(not ln.strip() or ln.startswith(("--- ", "+++ ")) for b in blocks for ln in b.splitlines())
+            if hunked:
+                candidate, why = _apply(sb, Path(sb.payload_rel).name, mechanical, hunked[-1])
                 if why:
                     out.status = "deep-failed"
                     out.error = why
                     return out
                 touched, others = [sb.payload_rel], {}
+            elif reasons and not empty:
+                named = ", ".join(str(r.get("region") or r.get("path") or "?")
+                                  for r in reasons if isinstance(r, dict)) or "the file"
+                out.status = "deep-failed"
+                out.error = (f"the reply's diff block has no hunk to apply, though the model says it edited "
+                             f"{named} -- nothing kept; its reply is beside your result")
+                return out
+            else:
+                candidate, touched, others = mechanical, [], {}
         out.escapes = guard.escapes()
         if out.escapes:
             out.status = "deep-escaped"

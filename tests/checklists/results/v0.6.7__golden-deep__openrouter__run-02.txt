@@ -1,0 +1,13 @@
+GOLDEN-DEEP | openrouter | bc-python-broken | scope=hunk form=no-tools | DIFFERS
+GOLDEN-DEEP | openrouter | bc-python-control | scope=hunk form=no-tools | MATCH
+GOLDEN-DEEP | openrouter | bc-python-fix-in-a | scope=hunk form=no-tools | KEPT (expected a refusal beyond the scope)
+GOLDEN-DEEP | openrouter | bc-python-fix-in-a | scope=file form=no-tools | DIFFERS
+GOLDEN-DEEP | openrouter | bc-markdown-broken | scope=hunk form=no-tools | MATCH
+GOLDEN-DEEP | openrouter | bc-markdown-control | scope=hunk form=no-tools | MATCH
+GOLDEN-DEEP | openrouter | rung-2-other-section | scope=hunk form=no-tools | KEPT (expected a refusal beyond the scope)
+GOLDEN-DEEP | openrouter | rung-2-other-section | scope=file form=no-tools | DIFFERS
+GOLDEN-DEEP | openrouter | rung-3-neighbour-file | scope=file form=no-tools | KEPT (expected a refusal beyond the scope)
+GOLDEN-DEEP | openrouter | rung-3-neighbour-file | scope=neighbours form=no-tools | REFUSED (no tools at this scope)
+GOLDEN-DEEP | openrouter | rung-4-far-file | scope=neighbours form=no-tools | REFUSED (no tools at this scope)
+GOLDEN-DEEP | openrouter | rung-4-far-file | scope=project form=no-tools | REFUSED (no tools at this scope)
+GOLDEN-DEEP | openrouter | tripwire-drop | scope=hunk form=no-tools | DIFFERS

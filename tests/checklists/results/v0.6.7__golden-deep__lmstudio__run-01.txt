@@ -1,0 +1,13 @@
+GOLDEN-DEEP | lmstudio qwen3.8-27b-uncensored | bc-python-broken | scope=hunk form=no-tools | MATCH
+GOLDEN-DEEP | lmstudio qwen3.8-27b-uncensored | bc-python-control | scope=hunk form=tools | MATCH
+GOLDEN-DEEP | lmstudio qwen3.8-27b-uncensored | bc-python-fix-in-a | scope=hunk form=no-tools | KEPT (expected a refusal beyond the scope)
+GOLDEN-DEEP | lmstudio qwen3.8-27b-uncensored | bc-python-fix-in-a | scope=file form=tools | NO VARIANT (nothing to change)
+GOLDEN-DEEP | lmstudio qwen3.8-27b-uncensored | bc-markdown-broken | scope=hunk form=no-tools | MATCH
+GOLDEN-DEEP | lmstudio qwen3.8-27b-uncensored | bc-markdown-control | scope=hunk form=tools | MATCH
+GOLDEN-DEEP | lmstudio qwen3.8-27b-uncensored | rung-2-other-section | scope=hunk form=no-tools | KEPT (expected a refusal beyond the scope)
+GOLDEN-DEEP | lmstudio qwen3.8-27b-uncensored | rung-2-other-section | scope=file form=no-tools | DIFFERS
+GOLDEN-DEEP | lmstudio qwen3.8-27b-uncensored | rung-3-neighbour-file | scope=file form=no-tools | KEPT (expected a refusal beyond the scope)
+GOLDEN-DEEP | lmstudio qwen3.8-27b-uncensored | rung-3-neighbour-file | scope=neighbours form=no-tools | REFUSED (no tools at this scope)
+GOLDEN-DEEP | lmstudio qwen3.8-27b-uncensored | rung-4-far-file | scope=neighbours form=no-tools | REFUSED (no tools at this scope)
+GOLDEN-DEEP | lmstudio qwen3.8-27b-uncensored | rung-4-far-file | scope=project form=no-tools | REFUSED (no tools at this scope)
+GOLDEN-DEEP | lmstudio qwen3.8-27b-uncensored | tripwire-drop | scope=hunk form=no-tools | DIFFERS

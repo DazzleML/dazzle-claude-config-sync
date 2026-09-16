@@ -1,0 +1,94 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_golden_ai_deep.py",
+      "tests/test_aideep.py",
+      "tests/test_airecord.py"
+    ],
+    "timestamp": "2026-09-16T04:42:58-04:00"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "the apply is fed blocks[-1] (the raw last fenced block) instead of hunked[-1] (the last block that actually carries a hunk) -- this is the literal 0.6.8 defect the unit fixes: when the last block is a hunkless snippet, the wrong text goes to git apply.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M2",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "picks the FIRST hunked block instead of the last -- if a model offers a false-start hunk followed by its real corrected hunk, the stale first one applies instead of the model's final answer.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M3",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "loosens the hunk detector from an anchored '^@@ ' line match to a bare substring test -- a block that merely mentions '@@' in prose text (not as a real hunk header) would now count as hunked.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "the empty-diff detector is short-circuited to always-true, so the 'elif reasons and not empty' refusal can never fire no matter what a hunkless block actually contains.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M5",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "the empty-diff detector is short-circuited to always-false, so a truly empty/headers-only reply with declared edits now wrongly triggers the refusal instead of the pre-existing 'nothing to change' outcome (the C2 fixture's case).",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M6",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "drops the not-empty guard from the refusal condition -- a truly empty/headers-only reply that still declared edits now refuses instead of reporting nothing to change.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M7",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "drops the reasons guard from the refusal condition -- any non-empty snippet-only reply now refuses even when the model declared no edits at all.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M8",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "the refusal path sets deep-empty instead of deep-failed (while still building the refusal's error text) -- a snippet-only reply the model says edited something now reads as a clean no-change outcome, with the explanatory error never surfaced by the deep-empty branch.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 6,
+    "survived": 2
+  },
+  "anomalies": []
+}

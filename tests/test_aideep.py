@@ -89,6 +89,78 @@ def test_apply_still_refuses_a_hunk_whose_removed_line_is_not_in_the_file_v068(t
     assert got == b"" and "does not apply" in why, why
 
 
+# -- which diff block is the answer (v0.6.9, finding 10) ---------------------------------------
+#
+# Part B's `bc-python-fix-in-a@file` line (2026-09-16): the model wrote a
+# bare snippet, then the real patch, then another snippet. The capture took
+# the LAST block, which has no hunk, and 0.6.8's rule read it as "nothing to
+# change" -- a fix reported as no change, which is worse than a refusal.
+# The block WITH the hunk is the answer; when no block has one, the model's
+# own json decides: no edits declared is no change, edits declared with
+# nothing applicable is a refusal that says so.
+
+SNIPPET_BLOCK = "```diff\n def b(x):\n-    v = c(x)\n-    return v * 2\n+    return tuple(vi * 2 for vi in c(x))\n```\n"
+REAL_PATCH_BLOCK = ("```diff\n--- a/merged.py\n+++ b/merged.py\n@@ -5,4 +5,4 @@\n def b(x):\n     v = c(x)\n"
+                    "-    return v * 2\n+    return (v[0] * 2, v[1] * 2)\n \n```\n")
+EDITS_JSON = "```json\n" + ANSWER_JSON + "\n```\n"
+NO_EDITS_JSON = "```json\n" + json.dumps({"summary": "nothing needed changing", "edits": []}) + "\n```\n"
+
+
+def test_the_block_with_the_hunk_is_the_answer_not_the_last_block_v069(tmp_path, fakes):
+    from dazzle_claude_config import airecord
+    w = _world(tmp_path)
+    _NoTools.reply = "A snippet first:\n\n" + SNIPPET_BLOCK + "\nThe patch:\n\n" + REAL_PATCH_BLOCK + "\nOr:\n\n" + SNIPPET_BLOCK + "\n" + EDITS_JSON
+    out = _deep(w, backend="lmstudio", scope=1)
+    assert out.status == "deep-proposed", out.error
+    assert airecord.proposal_path(w["merged"], 1).read_text(encoding="utf-8").replace("\r\n", "\n") == FIXED_BROKEN
+
+
+def test_snippets_only_with_edits_declared_is_a_refusal_that_names_the_missing_hunk_v069(tmp_path, fakes):
+    from dazzle_claude_config import airecord
+    w = _world(tmp_path)
+    _NoTools.reply = "Change b like so:\n\n" + SNIPPET_BLOCK + "\n" + EDITS_JSON
+    out = _deep(w, backend="lmstudio", scope=1)
+    assert out.status == "deep-failed", out.status
+    assert "no hunk" in out.error and "b" in out.error, out.error
+    assert not airecord.proposal_path(w["merged"], 1).exists()
+    assert out.reply is not None and out.reply.is_file()
+
+
+def test_the_last_hunked_block_wins_over_an_earlier_false_start_v069_M2(tmp_path, fakes):
+    """M2 of the 0.6.9 sweep: a model may write a false-start hunk and then
+    its real patch. The LAST block with a hunk is the answer; the first one
+    here removes a line the file does not have and would be refused."""
+    from dazzle_claude_config import airecord
+    w = _world(tmp_path)
+    false_start = "```diff\n" + WRONG_LINE_DIFF.replace("a/s.py", "a/merged.py").replace("b/s.py", "b/merged.py") + "```\n"
+    _NoTools.reply = "First attempt:\n\n" + false_start + "\nCorrected:\n\n" + REAL_PATCH_BLOCK + "\n" + EDITS_JSON
+    out = _deep(w, backend="lmstudio", scope=1)
+    assert out.status == "deep-proposed", out.error
+    assert airecord.proposal_path(w["merged"], 1).read_text(encoding="utf-8").replace("\r\n", "\n") == FIXED_BROKEN
+
+
+def test_a_hunk_is_an_anchored_hunk_line_not_a_bare_at_at_anywhere_v069_M3(tmp_path, fakes):
+    """M3 of the 0.6.9 sweep: a snippet that merely mentions `@@` mid-line
+    is not a hunk. With no edits declared it is no change; a loose
+    detector would hand the snippet to git and refuse it."""
+    from dazzle_claude_config import airecord
+    w = _world(tmp_path)
+    chatter = "```diff\n def b(x):\n-    return v * 2   (see the @@ header in a real patch)\n+    return (v[0] * 2, v[1] * 2)\n```\n"
+    _NoTools.reply = "For reference only:\n\n" + chatter + "\n" + NO_EDITS_JSON
+    out = _deep(w, backend="lmstudio", scope=1)
+    assert out.status == "deep-empty", (out.status, out.error)
+    assert not airecord.proposal_path(w["merged"], 1).exists()
+
+
+def test_snippets_only_with_no_edits_declared_is_no_change_v069(tmp_path, fakes):
+    from dazzle_claude_config import airecord
+    w = _world(tmp_path)
+    _NoTools.reply = "The changes compose. For reference:\n\n" + SNIPPET_BLOCK + "\n" + NO_EDITS_JSON
+    out = _deep(w, backend="lmstudio", scope=1)
+    assert out.status == "deep-empty", (out.status, out.error)
+    assert not airecord.proposal_path(w["merged"], 1).exists()
+
+
 def test_a_backend_failure_keeps_no_reply_and_the_outcome_names_none_v068_M6(tmp_path, fakes):
     """M6 of the 0.6.8 sweep: the reply is kept only after the backend
     answered. A failure -- a timeout, an unreachable server -- has no text
@@ -192,6 +264,7 @@ class _NoTools:
     diff: str = HAND_DIFF
     calls: int = 0
     fail: str = ""                 # when set, the backend fails with this sentence instead of answering
+    reply: str = ""                # when set, the whole reply verbatim (several blocks, prose, anything)
 
     def probe(self, spec):
         from dazzle_claude_config._vendor.ailib.types import Readiness
@@ -206,6 +279,8 @@ class _NoTools:
         assert not req.workdir, "the no-tools form never names a workdir"
         if _NoTools.fail:
             return Response("failed", error=_NoTools.fail)
+        if _NoTools.reply:
+            return Response("answered", text=_NoTools.reply, model_used="fake-27b", honoured=("model",))
         return Response("answered", text="```diff\n" + _NoTools.diff + "```\n\n```json\n" + ANSWER_JSON + "\n```\n",
                         model_used="fake-27b", honoured=("model",))
 
@@ -217,7 +292,7 @@ def fakes(monkeypatch):
     monkeypatch.setitem(_bm._TRANSPORTS, "cli", _Tools())
     monkeypatch.setitem(_bm._TRANSPORTS, "openai_compat", _NoTools())
     _Tools.script, _Tools.escape, _Tools.calls, _Tools.seen = [], None, 0, {}
-    _NoTools.diff, _NoTools.calls, _NoTools.fail = HAND_DIFF, 0, ""
+    _NoTools.diff, _NoTools.calls, _NoTools.fail, _NoTools.reply = HAND_DIFF, 0, "", ""
 
 
 def _opts(w, backend="claude"):
