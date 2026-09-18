@@ -115,12 +115,24 @@ def test_probe_names_a_missing_executable(cli):
 def test_candidates_are_tried_after_path(cli, tmp_path):
     """codex's npm and WinGet shims, claude's ~/.local/bin: places PATH may
     not know. A candidate that exists is used by its full path."""
-    exe = tmp_path / "hidden" / "thing.cmd"
-    exe.parent.mkdir()
-    exe.write_text("@echo off\n", encoding="utf-8")
+    # The candidate's SHAPE is platform-specific and the claim is not: a `.cmd`
+    # shim is a Windows thing (npm, WinGet), and on POSIX the transport would
+    # rightly refuse one -- it cannot run, so it looks like a shim to a deleted
+    # binary. Write the shape the platform actually has, so the claim is tested
+    # on both. (The refusal itself has its own Windows-only test below.)
+    if sys.platform == "win32":
+        exe = tmp_path / "hidden" / "thing.cmd"
+        exe.parent.mkdir()
+        exe.write_text("@echo off\n", encoding="utf-8")
+    else:
+        exe = tmp_path / "hidden" / "thing"
+        exe.parent.mkdir()
+        exe.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        exe.chmod(0o755)
     spec = Spec("cli", command=("thing-not-on-path",), candidates=(str(exe),))
     ready = build(spec).probe()
     assert ready.ok, ready.reason
+    assert str(exe) in ready.reason, "the candidate is named by its full path"
 
 
 # -- the request reaches the child -----------------------------------------------

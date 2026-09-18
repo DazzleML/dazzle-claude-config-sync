@@ -443,8 +443,24 @@ def _spy_launch(monkeypatch):
     return calls
 
 
+@pytest.fixture
+def writes_only_tool(monkeypatch):
+    """Pin the merge tool to one that REGENERATES its output pane, whatever
+    git config says on this box. The four tests below assert what ccs does
+    for such a tool; on the maintainer's box git's `merge.tool` resolves to
+    BeyondCompare and they passed by accident of configuration, while on a
+    runner with no git config ccs resolved `vimdiff`, whose profile lets a
+    resumed file reopen -- and CI was red from 2026-09-02 until this pin."""
+    monkeypatch.setattr(merge, "effective_registry",
+                        lambda user_claude=None: ({"tools": {"regentool": {"resume": "writes-only",
+                                                                           "why": "a stand-in that regenerates"}},
+                                                   "executables": {}, "inject_profiles": {}}, []))
+    monkeypatch.setattr(merge, "resolve_tool", lambda explicit=None: "regentool")
+    monkeypatch.setattr(merge, "tool_command", lambda name: 'regentool "$MERGED"')
+
+
 def test_a_resumed_file_is_NOT_reopened_in_the_merge_tool(world, capsys,
-                                                          monkeypatch):
+                                                          monkeypatch, writes_only_tool):
     """The tool is handed the merged file as its OUTPUT pane, and the common
     ones treat that as a destination rather than an input -- BeyondCompare's
     documented form is `bcomp <Left> <Right> <Center> <Output>` and its whole
@@ -496,7 +512,7 @@ def test_relaunch_opts_back_in(world, monkeypatch):
     assert calls, "--relaunch must reopen the tool"
 
 
-def test_the_edits_survive_a_re_run_untouched(world, monkeypatch):
+def test_the_edits_survive_a_re_run_untouched(world, monkeypatch, writes_only_tool):
     """The property the whole fix exists for, asserted on BYTES rather than on
     the absence of a call: stop, come back, and your work is still there.
 
@@ -538,7 +554,7 @@ def test_the_edits_survive_a_re_run_untouched(world, monkeypatch):
             "a re-run must leave the merged file byte-identical")
 
 
-def test_the_resumed_line_says_why_the_tool_did_not_open(world, capsys):
+def test_the_resumed_line_says_why_the_tool_did_not_open(world, capsys, writes_only_tool):
     """"Why didn't my tool open?" is the immediate next question. Unanswered,
     a deliberate refusal reads as a failure."""
     manifest, co, roots, base_file = world
@@ -554,7 +570,7 @@ def test_the_resumed_line_says_why_the_tool_did_not_open(world, capsys):
 
 
 def test_the_install_hint_does_not_recommend_a_command_that_reopens(
-        world, capsys):
+        world, capsys, writes_only_tool):
     """The hint added earlier said `ccs merge --accept`. With the tool live
     that REOPENS every unresumed file, so the command offered to install your
     work would have regenerated it first."""

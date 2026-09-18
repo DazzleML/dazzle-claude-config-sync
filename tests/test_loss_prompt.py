@@ -42,7 +42,16 @@ def test_fit_does_not_cut_when_there_is_no_room_to_say_so(monkeypatch):
 def test_terminal_width_falls_back_to_80_when_piped(monkeypatch):
     monkeypatch.delenv("COLUMNS", raising=False)
     import shutil
-    monkeypatch.setattr(shutil, "get_terminal_size", lambda fb: SimpleNamespace(columns=fb[0]))
+    # The stand-in must accept every call shape, because pytest's own verbose
+    # reporter calls `shutil.get_terminal_size(fallback=...)` while the patch
+    # is live: a positional-only lambda raised TypeError inside pytest, an
+    # INTERNALERROR that killed every CI job at the same point (2026-09-02
+    # to 2026-09-18). `-q` never triggered it, which is why it passed here.
+    # `width, _ = shutil.get_terminal_size(fallback=...)` is the exact call, so
+    # the stand-in returns the real tuple type, not an object with `.columns`.
+    import os
+    monkeypatch.setattr(shutil, "get_terminal_size",
+                        lambda fallback=(80, 24), *a, **k: os.terminal_size(fallback))
     assert render.terminal_width() == 80
 
 

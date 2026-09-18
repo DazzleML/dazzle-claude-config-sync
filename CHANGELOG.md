@@ -4,6 +4,11 @@ All notable changes to dazzle-claude-config (ccs) are documented here. Format fo
 
 ## [Unreleased]
 
+## [0.6.11] - 2026-09-18
+
+### Fixed
+- **CI is green again.** Seven tests passed only on the maintainer's machine, and no code outside the tests changed. One replaced the terminal-size function with a stand-in that pytest's own verbose reporter could not read, so pytest itself crashed mid-run and every CI job died at the same point from 2026-09-02 on -- which also hid the four failures below it and the two below those. Four assumed the configured merge tool regenerates its output pane, true of BeyondCompare here and not of the `vimdiff` a bare machine resolves; they now pin a stand-in tool with that profile. One built a bare upstream repository without naming its branch, so on a machine whose git defaults to `master` the clone of it came out empty. One wrote a Windows `.cmd` shim as its stand-in program on every platform, where Linux rightly refuses one that cannot run; it now writes the shape the platform has.
+
 ## [0.6.10] - 2026-09-18
 
 ### Changed
@@ -531,7 +536,8 @@ Fixes both issues 0.3.0 shipped as known, plus five more found by running the to
 - Console scripts `ccs` and `dazzle-claude-config`; stdlib-only, Python 3.10+
 - 53 automated tests + tester-agent exploratory report + human test checklist (`tests/checklists/v0.1.0__Phase1__collect-apply-status-diff.md`)
 
-[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.10...HEAD
+[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.11...HEAD
+[0.6.11]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.10...v0.6.11
 [0.6.10]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.9...v0.6.10
 [0.6.9]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.8...v0.6.9
 [0.6.8]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.7...v0.6.8

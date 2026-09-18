@@ -215,7 +215,13 @@ def test_a_checkout_BEHIND_its_upstream_does_not_auto_remove(world, capsys, tmp_
     """
     # Give the checkout an upstream that is one commit ahead of it.
     bare = tmp_path / "remote.git"
-    sp.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+    # `-b main`, as every other bare fixture here writes it: a bare repo's HEAD
+    # decides what a clone of it checks out, and without this it is whatever
+    # `init.defaultBranch` says -- `master` on a stock runner, so the clone
+    # below produced an EMPTY worktree and the write two lines later failed.
+    # This box's system git config sets the default to `main`, which is why it
+    # passed here for as long as the test has existed.
+    sp.run(["git", "init", "-q", "--bare", "-b", "main", str(bare)], check=True)
     _git(world["co"], "remote", "add", "origin", str(bare))
     _git(world["co"], "push", "-q", "-u", "origin", "main")
     clone = tmp_path / "clone"
