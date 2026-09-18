@@ -1,0 +1,6 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_vendored_ailib.py"],
+  "mutations": [
+    {"id": "M8", "file": "dazzle_claude_config/ailib.py", "original": "        return backend.invoke(prompt, verbose=verbose, timeout=timeout)", "mutated": "        return backend.invoke(prompt, verbose=timeout, timeout=verbose)", "note": "Re-run of the round-1 survivor after test_invoke_forwards_verbose_and_timeout_by_name was written: must now be killed."}
+  ]
+}

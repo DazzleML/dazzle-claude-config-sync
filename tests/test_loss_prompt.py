@@ -104,8 +104,8 @@ def test_plural_and_both_sides_read_right(monkeypatch, capsys):
     _, out = _ask(monkeypatch, capsys, {"ours": ["a", "b"], "theirs": ["c"]})
     assert "drops 2 lines that your live file has:" in out
     assert "drops 1 line that the payload's copy has:" in out
-    assert ("If each of those lines was dropped on purpose -- the payload's by the payload, "
-            "yours by you -- install the result: y.") in out
+    assert ("If each of those lines was dropped on purpose -- the payload's (by the payload), "
+            "yours (by you) -- install the result: y.") in out
     assert "If any of them should have stayed, answer N" in out
     assert "If the payload removed" not in out
 

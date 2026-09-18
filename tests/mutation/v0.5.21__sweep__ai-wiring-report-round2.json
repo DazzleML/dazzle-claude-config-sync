@@ -1,0 +1,117 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_merge_ai.py"
+    ],
+    "timestamp": "2026-09-03T22:32:02-04:00"
+  },
+  "results": [
+    {
+      "id": "N1",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Refusal guard drops the mergeable check -- non-mergeable items get a reason and land in ai_no_base.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N2",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Classifies a record even when the item was not resumed (fresh-seeded), so a fresh run reports unchanged/edited.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N3",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Item stays in resumed while also being ai_unchanged -- double-reported to the CLI.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N4",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Record not stored on the unchanged path -- the accept question KeyErrors on ai_records[label].",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N5",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Edited branch no longer requires the proposal to exist -- _line_delta reads a missing file.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N6",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "_line_delta arguments swapped -- delta computed proposal-vs-merged instead of merged-vs-proposal.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N7",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "The base_kind fact is dropped from the prompt facts passed to the AI step.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N8",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Record claims copied but the .merged file is never written.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N9",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "A freshly copied proposal is not recorded as unchanged, so --accept skips its question/handling.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N10",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Injected confirm_ai callable ignored -- accept always falls through to the console prompt.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N11",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "_base_kind reports 'sibling' whenever a sibling exists, even when the base did not come from it.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "survived": 8,
+    "killed": 3
+  },
+  "anomalies": []
+}

@@ -1,0 +1,68 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_aistep.py"
+    ],
+    "timestamp": "2026-09-03T22:09:11-04:00"
+  },
+  "results": [
+    {
+      "id": "N2",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "re-run after test_the_cache_key_includes_the_ancestry_facts_and_the_base_kind",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N3",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "re-run after test_the_cache_key_includes_the_ancestry_facts_and_the_base_kind",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N6",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "re-run after test_a_cache_entry_without_an_answer_falls_through_to_the_backend",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N9",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "re-run after the proposal_sha assertion in the rejected-answer test",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N11",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "re-run after test_every_paragraph_hunk_gets_its_report",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 5
+  },
+  "anomalies": []
+}

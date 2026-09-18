@@ -126,7 +126,7 @@ def test_result_identical_to_ours_is_rejected_without_probes(tmp_path):
     out.write_bytes(item.live.read_bytes())          # exactly ours
     res = merge.validate(item, out)                   # note: no probes
     assert not res.ok
-    assert any("that the payload's copy has are missing" in f for f in res.failures)
+    assert any("that theirs (the payload's copy) has are missing" in f for f in res.failures)
 
 
 def test_result_identical_to_theirs_is_rejected_without_probes(tmp_path):
@@ -136,7 +136,7 @@ def test_result_identical_to_theirs_is_rejected_without_probes(tmp_path):
     out.write_bytes(item.repo.read_bytes())          # exactly theirs
     res = merge.validate(item, out)
     assert not res.ok
-    assert any("that your live file has are missing" in f for f in res.failures)
+    assert any("that ours (your live file) has are missing" in f for f in res.failures)
 
 
 def test_identical_sides_do_not_trigger_the_identity_check(tmp_path):
@@ -426,6 +426,28 @@ def test_union_duplication_is_caught_by_validation(tmp_path):
     out.write_bytes((line + "\n" + line + "\n").encode())
     res = merge.validate(item, out)
     assert any("duplicated" in f for f in res.failures)
+
+
+def test_a_line_you_wrote_yourself_is_invented_not_duplicated(tmp_path):
+    """A line NEITHER side has cannot have been duplicated -- it is new text,
+    which the invented-content check already reports by name. Before the
+    guard, `n > max(0, 0)` held for every substantial line a person wrote
+    themselves, so a hand-blended paragraph was reported twice: once
+    correctly, and once as "content was duplicated", which sends the reader
+    hunting for a second copy that does not exist. Measured while hand-
+    merging the two sides of a paragraph conflict, 2026-09-04."""
+    item = _item(tmp_path)
+    out = tmp_path / "merged"
+    theirs = "the payload's own long line, well over forty characters of it"
+    ours = "this box's own long line, also well over forty characters long"
+    item.repo.write_bytes((theirs + "\n").encode())
+    item.live.write_bytes((ours + "\n").encode())
+    item.base.write_bytes(b"an older line neither side kept, forty characters and more\n")
+    # the resolution a person would actually write: both sides, blended, once
+    out.write_bytes((theirs + " " + ours + "\n").encode())
+    res = merge.validate(item, out)
+    assert any("neither side" in f for f in res.failures), res.failures
+    assert not any("duplicated" in f for f in res.failures), res.failures
 
 
 def test_union_is_not_the_default(tmp_path):

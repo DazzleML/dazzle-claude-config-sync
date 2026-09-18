@@ -1,0 +1,141 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_aistep.py"
+    ],
+    "timestamp": "2026-09-03T22:02:20-04:00"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "Branch order swapped: a stale workspace response file now wins over an explicit --ai-response.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M2",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "The carried answer is no longer kept beside the proposal (response write dropped).",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M3",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "_safe dropped from the prompt filename: nested labels collide or escape the prompts dir.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "Prompt-only branch falls through and also invokes the backend instead of answering nothing.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M5",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "check_available guard inverted: an available backend is reported as missing.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M6",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "Error message loses the backend name.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M7",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "out.cached is never set, so a cache hit reports as a fresh backend call.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M8",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "The cache write is skipped: every run re-invokes the backend.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M9",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "Fingerprint loses the THEIRS side: two different merges share one cache key.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M10",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "Rules sha dropped from the key: edited rules still serve the old cached answer.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M11",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "OURS and THEIRS panes swapped into merge_file_diff3.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M12",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "The merge-file failure guard no longer fires on rc 255.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M13",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "A rejected answer writes its record with valid=True.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M14",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "Rationales built in insertion order rather than sorted by hunk number.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "survived": 5,
+    "killed": 9
+  },
+  "anomalies": []
+}

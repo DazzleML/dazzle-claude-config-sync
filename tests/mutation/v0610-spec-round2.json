@@ -1,0 +1,31 @@
+{
+  "test_command": [
+    "python", "-m", "pytest", "-q", "-p", "no:cacheprovider",
+    "tests/test_transport_cli.py", "tests/test_aideep.py", "tests/test_aistep.py",
+    "tests/test_merge_ai.py", "tests/test_ailib_types.py", "tests/test_ailib_presets.py",
+    "tests/test_transport_openai_compat.py"
+  ],
+  "mutations": [
+    {
+      "id": "M-1",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "original": "            if req.idle and now - last[0] > req.idle:",
+      "mutated": "            if now - last[0] > req.idle:",
+      "note": "drop the req.idle guard on the silence comparison -- an idle of 0 would then compare 'now - last[0] > 0' and could fire immediately -- killed on round 2 by test_an_idle_of_zero_means_no_silence_limit_v0610_M1"
+    },
+    {
+      "id": "M-4",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "original": "            for raw in reversed(stdout.splitlines()):          # the result is the LAST event",
+      "mutated": "            for raw in stdout.splitlines():          # the result is the LAST event",
+      "note": "stream-json locator scans forward instead of from the end -- killed on round 2 by test_a_stream_json_locator_with_two_result_events_takes_the_last_v0610_M4"
+    },
+    {
+      "id": "M-10",
+      "file": "dazzle_claude_config/aistep.py",
+      "original": "        if '\"tool_use\"' in line and '\"assistant\"' in line:",
+      "mutated": "        if '\"tool_use\"' in line or '\"assistant\"' in line:",
+      "note": "Progress's tool-call heuristic widens from AND to OR -- killed on round 2 by test_the_progress_sink_does_not_count_plain_assistant_text_as_a_tool_call_v0610_M10"
+    }
+  ]
+}

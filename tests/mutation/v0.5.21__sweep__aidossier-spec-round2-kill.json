@@ -1,0 +1,9 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_aidossier.py"],
+  "mutations": [
+    {"id": "N4", "file": "dazzle_claude_config/merge.py", "original": "        code, path = line[:2], line[3:].strip().strip('\"')", "mutated": "        code, path = line[:2], line[3:].strip()", "note": "re-run after the quoted-path assertion in test_checkout_states_reads_modified_untracked_and_renamed"},
+    {"id": "N8", "file": "dazzle_claude_config/merge.py", "original": "    for h in resolution_hints(item):\n        lines.append(f\"Hint: {h}\")", "mutated": "    for h in resolution_hints(item):\n        lines.append(f\"{h}\")", "note": "re-run after test_hints_keep_their_prefix"},
+    {"id": "N9", "file": "dazzle_claude_config/merge.py", "original": "    others = [c for c in item.candidates if c.sha != sha and not c.exact]", "mutated": "    others = [c for c in item.candidates if not c.exact]", "note": "re-run after test_render_dossier_lists_others_nearest_first_and_never_the_base"},
+    {"id": "N10", "file": "dazzle_claude_config/merge.py", "original": "        for c in sorted(others, key=lambda c: c.score):", "mutated": "        for c in others:", "note": "re-run after test_render_dossier_lists_others_nearest_first_and_never_the_base"}
+  ]
+}

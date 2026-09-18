@@ -1,0 +1,109 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_airecord.py"
+    ],
+    "timestamp": "2026-09-03T21:34:49-04:00"
+  },
+  "results": [
+    {
+      "id": "N1",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "proposal_path returns the record path, so the proposal and its record collide on one file.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N2",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "__post_init__ restamps created unconditionally, so a loaded record loses its original timestamp.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N3",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "mark_copied claims it recorded the copy on the second call while writing nothing.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N4",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "new_record aliases the caller's failures list instead of copying it, so later mutation leaks into the record.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N5",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "load only rejects a record missing every required key, admitting partially-populated records.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N6",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "load drops the known-field filter, so an extra key in the JSON turns a good record into None.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N7",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "load no longer strips a UTF-8 BOM, so a BOM-prefixed record reads as malformed.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N8",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "write drops the trailing newline and uses os.rename, which fails to overwrite an existing record on Windows.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N9",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "a failed write leaves its temp file behind beside the record.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N10",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "state reports a never-copied proposal as edited, hiding the not-copied branch.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 5,
+    "survived": 5
+  },
+  "anomalies": []
+}

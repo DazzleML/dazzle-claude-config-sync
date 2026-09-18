@@ -29,6 +29,14 @@ You do not need this page to answer a question about one setting -- `--explain <
 | [`on_divergence`](#on_divergence) | `"prompt"` | `CCS_ON_DIVERGENCE` |
 | [`difftool`](#difftool) | `null` | `CCS_DIFFTOOL` |
 | [`ai_merge_command`](#ai_merge_command) | `null` | `CCS_AI_MERGE_COMMAND` |
+| [`ai_merge_backend`](#ai_merge_backend) | `"prompt-only"` | `CCS_AI_MERGE_BACKEND` |
+| [`ai_merge_endpoint`](#ai_merge_endpoint) | `null` | `CCS_AI_MERGE_ENDPOINT` |
+| [`ai_merge_model`](#ai_merge_model) | `null` | `CCS_AI_MERGE_MODEL` |
+| [`ai_merge_api_key_env`](#ai_merge_api_key_env) | `null` | `CCS_AI_MERGE_API_KEY_ENV` |
+| [`ai_merge_api_key_file`](#ai_merge_api_key_file) | `null` | `CCS_AI_MERGE_API_KEY_FILE` |
+| [`ai_merge_idle`](#ai_merge_idle) | `180` | `CCS_AI_MERGE_IDLE` |
+| [`ai_merge_timeout`](#ai_merge_timeout) | `0` | `CCS_AI_MERGE_TIMEOUT` |
+| [`ai_merge_max_turns`](#ai_merge_max_turns) | `40` | `CCS_AI_MERGE_MAX_TURNS` |
 | [`interactive`](#interactive) | `true` | `CCS_INTERACTIVE` |
 | [`status_detail`](#status_detail) | `"auto"` | `CCS_STATUS_DETAIL` |
 | [`status_max_lines`](#status_max_lines) | `30` | `CCS_STATUS_MAX_LINES` |
@@ -56,7 +64,55 @@ The git difftool to force for `ccs diff` and `ccs merge`. Unset means resolve it
 
 **Default:** `null` &middot; **Environment:** `CCS_AI_MERGE_COMMAND`
 
-Shell command for AI-assisted merge; unset disables the option entirely. It receives the base, your version and the output path as $CCS_BASE, $CCS_OURS and $CCS_OUT. Left unset on purpose: AI costs money, so it is opt-in per machine.
+No longer read. It was documented since 0.3.0 as a shell command receiving $CCS_BASE, $CCS_OURS and $CCS_OUT and was never implemented; the AI merge that shipped in 0.5.21 is configured with ai_merge_backend instead. The key stays so an older config file is not called malformed, and `ccs doctor` says so when it is set.
+
+### ai_merge_backend
+
+**Default:** `"prompt-only"` &middot; **Environment:** `CCS_AI_MERGE_BACKEND` &middot; **One of:** `claude`, `claude-strict`, `codex`, `codex-strict`, `lmstudio`, `ollama`, `openai`, `openrouter`, `prompt-only`
+
+Which backend `ccs merge --ai` asks when the flag names none. The CLIs: claude (the Claude Code CLI) and codex (the Codex CLI), each with a -strict variant that asks for the answer's schema on the command line. The servers: lmstudio and ollama on this machine, openai and openrouter over the wire -- the same code with a different address and, for the hosted two, a key named by ai_merge_api_key_env or the preset's default (OPENAI_API_KEY, OPENROUTER_API_KEY). And prompt-only, which writes the prompt to ~/claude/ccs-merge-rules/_prompts/ for you to carry to any model and answers nothing. prompt-only is the default on purpose: it costs nothing and sends nothing anywhere. Whichever answers, the proposal lands beside your file as <file>.merged-ai and nothing installs without --accept.
+
+### ai_merge_endpoint
+
+**Default:** `null` &middot; **Environment:** `CCS_AI_MERGE_ENDPOINT`
+
+Where a server backend (lmstudio, ollama, openai, openrouter) sends its request, overriding the preset's own address: an OpenAI-compatible endpoint, ending in /v1. Unset means the preset's address -- for lmstudio, http://127.0.0.1:1234/v1, LM Studio on this machine. The IPv4 literal is deliberate -- LM Studio binds IPv4-only on Windows, and localhost can resolve to ::1 first and time out. A LAN address (http://192.168.1.5:1234/v1) is equally private in the sense that matters: your configuration text stays on your network.
+
+### ai_merge_model
+
+**Default:** `null` &middot; **Environment:** `CCS_AI_MERGE_MODEL`
+
+Which model the AI merge asks for. Every backend honours it in its own way: the CLIs on their command line (claude --model, codex -m), the servers in the request itself -- and lmstudio checks the id against the server before anything is sent, because naming a model it has not loaded makes it load one from disk. The report says which model actually answered. Unset means the preset's own default: the claude presets ask for claude-opus-5 (a merge should not silently inherit whatever the CLI's session defaults to); codex leaves it to its CLI; the servers use whatever is loaded, which is right when you run one model at a time.
+
+### ai_merge_api_key_env
+
+**Default:** `null` &middot; **Environment:** `CCS_AI_MERGE_API_KEY_ENV`
+
+The NAME of the environment variable holding the key a hosted backend needs -- never the key itself, which stays out of this file, out of the cache and out of every record. Unset means the preset's own default: OPENAI_API_KEY for openai, OPENROUTER_API_KEY for openrouter; the local servers need none. When the variable is not set, ccs reads `~/claude/keys/<preset>.env` instead (a `NAME=value` line, with this NAME), and ai_merge_api_key_file names a file read before both. `ccs doctor` says where it looked, and where it found the key.
+
+### ai_merge_api_key_file
+
+**Default:** `null` &middot; **Environment:** `CCS_AI_MERGE_API_KEY_FILE`
+
+The PATH of a file holding the key a hosted backend needs, read BEFORE the environment variable -- for a key you keep in a file rather than a shell. `NAME=value` lines, where NAME is the variable ai_merge_api_key_env or the preset names (OPENROUTER_API_KEY for openrouter); an `export ` prefix, quotes, `#` comments and blank lines are fine, and a file holding only the key works too. Unset means the environment variable, and when that is unset as well, `~/claude/keys/<preset>.env` -- user territory, one file per provider, never part of the payload. The key's value is read when a request is made and never enters this file, the cache, a record or a report; `ccs doctor` says which of the three places it found the key in, and on Linux and macOS warns when the file is readable by anyone but you.
+
+### ai_merge_idle
+
+**Default:** `180` &middot; **Environment:** `CCS_AI_MERGE_IDLE`
+
+Seconds a backend may be silent before ccs declares it dead and stops the call. An AI merge runs while it is alive -- a thinking model is not silent (its thinking arrives as output every second or so on the streaming formats ccs asks for), and a dead process emits nothing -- so this is the hang detector, not a ceiling: a call that takes ten minutes of real work finishes. 180 catches a dead CLI or a hung server within three minutes and leaves room for a hosted queue or a large prompt being processed. `--ai-idle` overrides it for one run. When it fires, the report says how long the silence was and, for the deep step, where the sandbox and the CLI's own transcript were left.
+
+### ai_merge_timeout
+
+**Default:** `0` &middot; **Environment:** `CCS_AI_MERGE_TIMEOUT`
+
+A hard ceiling in seconds on one AI call, for a machine with nobody watching -- CI, a scheduled run -- or for a cost you want fenced by time. 0, the default, means none: a call ends when the model finishes, when it goes silent (ai_merge_idle), or when you stop it. Before 0.6.10 this was a fixed 120 seconds, and it cut off a model that was reading and thinking about a real file. `--ai-timeout` overrides it for one run; the report names the ceiling as yours when it fires.
+
+### ai_merge_max_turns
+
+**Default:** `40` &middot; **Environment:** `CCS_AI_MERGE_MAX_TURNS`
+
+The budget of agentic turns a CLI backend may take on one call (claude's --max-turns): the cost fence for a call that is allowed to run while it is alive. Each turn is one round of the model reading or editing and looking again; the real paragraph case used five turns in its first 100 seconds. 40 is generous for a merge of one file. Unset means the preset's own budget; the server backends (lmstudio, ollama, openai, openrouter) take no turns and ignore it.
 
 ### interactive
 

@@ -194,7 +194,7 @@ class CheckoutRepo:
         pairs: list[tuple[str, str]] = []
         for commit in out.split():
             proc = subprocess.run(["git", "-C", str(self.path), "show",
-                                   f"{commit}:{rel_path}"], capture_output=True)
+                                   f"{commit}:{rel_path}", "--"], capture_output=True)
             if proc.returncode != 0:
                 continue
             norm = hashlib.sha256(proc.stdout.replace(b"\r\n", b"\n")).hexdigest()

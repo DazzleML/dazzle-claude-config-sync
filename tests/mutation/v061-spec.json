@@ -1,0 +1,41 @@
+{
+ "test_command": [
+  "python",
+  "-m",
+  "pytest",
+  "-q",
+  "-x",
+  "-p",
+  "no:cacheprovider",
+  "tests/test_secrets.py",
+  "tests/test_manifest.py",
+  "tests/test_collect.py",
+  "tests/test_apply.py",
+  "tests/test_transport_openai_compat.py",
+  "tests/test_ailib_types.py",
+  "tests/test_ailib_presets.py",
+  "tests/test_ai_keys.py",
+  "tests/test_doctor_ai.py",
+  "tests/test_vendored_ailib.py"
+ ],
+ "mutations": [
+  {"id": "M1", "file": "dazzle_claude_config/secrets.py", "original": "r\"|sk-or-v1-[0-9a-f]{40,}\"", "mutated": "r\"|sk-or-v1-[0-9a-f]{65,}\"", "note": "wrong constant: a real 64-hex OpenRouter key no longer matches, so it passes collect -- the exact risk the comment names"},
+  {"id": "M2", "file": "dazzle_claude_config/secrets.py", "original": "r\"|sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}\"", "mutated": "r\"|sk-(?:proj|admin)-[A-Za-z0-9_-]{20,}\"", "note": "dropped alternative: sk-svcacct- keys are not caught by any other branch (the hyphen breaks the bare sk- run)"},
+  {"id": "M3", "file": "dazzle_claude_config/manifest.py", "original": "if not isinstance(allow, bool):", "mutated": "if not isinstance(allow, (bool, str)):", "note": "loosened type guard: \"true\" in quotes now passes as a truthy allowance, exactly what the comment forbids"},
+  {"id": "M4", "file": "dazzle_claude_config/manifest.py", "original": "allow = e.get(\"allow_secrets\", False)", "mutated": "allow = e.get(\"allow-secrets\", False)", "note": "wrong dict key: the allowance is never read, every entry gets allow_secrets=False and the type check never fires"},
+  {"id": "M5", "file": "dazzle_claude_config/collect.py", "original": "if d.entry.allow_secrets:\n                # The entry's own declaration: this file is MEANT to carry a", "mutated": "if not d.entry.allow_secrets:\n                # The entry's own declaration: this file is MEANT to carry a", "note": "boolean flip: allowed entries get scanned and refused, unallowed entries skip the scan"},
+  {"id": "M6", "file": "dazzle_claude_config/collect.py", "original": "if hits:\n                    result.refused_secrets.extend(hits)\n                    continue", "mutated": "if hits:\n                    result.refused_secrets.extend(hits)", "note": "dropped early continue: a file with a credential hit is reported refused but still collected into the payload"},
+  {"id": "M7", "file": "dazzle_claude_config/collect.py", "original": "pattern = is_denied(rel or src.name, manifest.deny)\n            if pattern:\n                result.refused_denied.append((display, pattern))\n                continue", "mutated": "pattern = None if d.entry.allow_secrets else is_denied(rel or src.name, manifest.deny)\n            if pattern:\n                result.refused_denied.append((display, pattern))\n                continue", "note": "allowance bypasses the hard deny -- the comment says an allowance is not a way past a deny"},
+  {"id": "M8", "file": "dazzle_claude_config/cli.py", "original": "api_key_file=cfg.get(\"ai_merge_api_key_file\"),", "mutated": "api_key_file=cfg.get(\"ai_merge_api_key_env\"),", "note": "wrong config key in doctor: the env var NAME is passed as the key file path, so doctor reports a different route than a merge would take"},
+  {"id": "M9", "file": "dazzle_claude_config/cli.py", "original": "backend = args.ai if args.ai != \"auto\" else (cfg.get(\"ai_merge_backend\") or aistep.PROMPT_ONLY)", "mutated": "backend = args.ai if args.ai == \"auto\" else (cfg.get(\"ai_merge_backend\") or aistep.PROMPT_ONLY)", "note": "comparison flip: --ai auto passes the literal \"auto\" through (unknown backend), an explicit --ai name is ignored in favour of config"},
+  {"id": "M10", "file": "dazzle_claude_config/cli.py", "original": "print(f\"{c('yellow', 'allowed')} {rel} \"", "mutated": "print(f\"{c('yellow', 'allowed')} \"", "note": "dropped f-string field: the per-file path is gone from the allowed line, so the exemption is no longer named per file"},
+  {"id": "M11", "file": "dazzle_claude_config/userconfig.py", "original": "\"ai_merge_api_key_file\": Key(default=None, env=\"CCS_AI_MERGE_API_KEY_FILE\"),", "mutated": "\"ai_merge_api_key_file\": Key(default=None, env=\"CCS_AI_MERGE_API_KEY_PATH\"),", "note": "wrong env constant: CCS_AI_MERGE_API_KEY_FILE in the environment is never read"},
+  {"id": "M12", "file": "dazzle_claude_config/ailib.py", "original": "if keys_dir is not None and spec.credential_env:", "mutated": "if keys_dir is not None:", "note": "removed guard: a preset that needs no key (local servers) now gets a <keys_dir>/<name>.env fallback, contrary to the docstring"},
+  {"id": "M13", "file": "dazzle_claude_config/ailib.py", "original": "if api_key_file:\n        changes[\"credential_file\"] = str(api_key_file)", "mutated": "if api_key_file:\n        changes[\"credential_env\"] = str(api_key_file)", "note": "wrong dict key: the named key file path is installed as the environment variable name instead of the file"},
+  {"id": "M14", "file": "dazzle_claude_config/_vendor/ailib/types.py", "original": "return path.replace(\"\\\\\", \"/\").rstrip(\"/\").rsplit(\"/\", 1)[-1]", "mutated": "return path.rstrip(\"/\").rsplit(\"/\", 1)[-1]", "note": "dropped separator normalization: a backslash path yields the full path as identity, leaking the account name and splitting the cache by platform"},
+  {"id": "M15", "file": "dazzle_claude_config/_vendor/ailib/transports/openai_compat.py", "original": "if len(v) >= 2 and v[0] == v[-1] and v[0] in (\"'\", '\"'):", "mutated": "if len(v) > 2 and v[0] == v[-1] and v[0] in (\"'\", '\"'):", "note": "off-by-one boundary: an empty quoted value (\"\") is no longer unquoted, so it reads as a present two-character token instead of absent"},
+  {"id": "M16", "file": "dazzle_claude_config/_vendor/ailib/transports/openai_compat.py", "original": "if len(lines) == 1 and \"=\" not in lines[0]:", "mutated": "if len(lines) >= 1 and \"=\" not in lines[0]:", "note": "boundary widened: a multi-line file without the name now yields its first line as a guess, which the docstring says must never happen"},
+  {"id": "M17", "file": "dazzle_claude_config/_vendor/ailib/transports/openai_compat.py", "original": "if spec.credential_file:\n            value = _read_key_file(spec.credential_file, name)\n            if value:\n                return value, spec.credential_file\n        if name:\n            value = os.environ.get(name, \"\")\n            if value:\n                return value, name", "mutated": "if name:\n            value = os.environ.get(name, \"\")\n            if value:\n                return value, name\n        if spec.credential_file:\n            value = _read_key_file(spec.credential_file, name)\n            if value:\n                return value, spec.credential_file", "note": "reordered steps: the environment wins over the file named on purpose, breaking the fixed route order the docstring states"},
+  {"id": "M18", "file": "dazzle_claude_config/_vendor/ailib/transports/openai_compat.py", "original": "return bool(stat.S_IMODE(mode) & 0o077)", "mutated": "return bool(stat.S_IMODE(mode) & 0o007)", "note": "wrong mask constant: a group-readable key file (mode 640) is no longer flagged"}
+ ]
+}

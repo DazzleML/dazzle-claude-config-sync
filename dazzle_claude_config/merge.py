@@ -36,7 +36,7 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from . import inject
@@ -44,7 +44,7 @@ from .manifest import Entry, Manifest
 from .platform_info import user_claude_dir
 from .secrets import is_denied, scan_file
 from .userconfig import not_valid_json
-from . import render, seeddecisions
+from . import aimerge, airecord, aistep, livegit, render, seeddecisions
 from .syncmap import EntryDiff, _normalize_eol, diff_all, only_scope, rel_in_scope, scope_diff
 
 # Strategies whose target is a straight copy of one repo file. Anything else
@@ -72,7 +72,7 @@ DEFAULT_REGRESSED_PATTERNS = ("/home/dev/claude/",)
 # real case: "Two of these are re-entrant..." vs "Three of these are
 # re-entrant..." scores far above this; "THEIRS-SECTION-A" vs "OURS-ONLY"
 # scores far below.
-_SUPERSEDE_RATIO = 0.5
+_SUPERSEDE_RATIO = aimerge.SUPERSEDE_RATIO   # one threshold for rewrite-vs-loss, here and in the AI check
 _LOSS_PREFIX = "dropped:"
 
 
@@ -87,6 +87,21 @@ EXIT_NO_BASE = 2
 EXIT_NO_TOOL = 3
 EXIT_VALIDATION = 4
 EXIT_REFUSED = 5
+
+
+@dataclass
+class Candidate:
+    """One version of a file in the checkout's history, as `infer_base` saw
+    it -- kept for the dossier instead of thrown away (0.5.21). `score` is
+    the line distance to the live file (nearest wins; a weak ranking, and the
+    dossier says so); `exact` marks the candidate at which the search stopped
+    because it equalled the live file, so a list ending there is partial."""
+    sha: str
+    date: str          # YYYY-MM-DD of the commit, "" when unknown
+    score: int
+    rejected: bool     # phantom-rejected: attributes deletions to us that theirs still has
+    eq_theirs: bool
+    exact: bool = False
 
 
 @dataclass
@@ -114,6 +129,11 @@ class MergeItem:
     base_supplied: bool = False
     base_label: str = ""
     cod: object | None = None      # basefind.CodStats once seeded
+    # The dossier's facts (0.5.21): every version infer_base considered, and
+    # whether the payload's copy in the checkout is committed, a working-tree
+    # edit, or untracked -- evidence for the model, never a decision.
+    candidates: list = field(default_factory=list)
+    checkout_state: str = "unknown"   # committed | modified | untracked | unknown
 
     @property
     def mergeable(self) -> bool:
@@ -149,6 +169,35 @@ class ValidationResult:
     @property
     def ok(self) -> bool:
         return not self.failures
+
+
+def _minus_licensed(res: "ValidationResult",
+                    licensed: list[tuple[int, list[str], list[str]]]) -> "ValidationResult":
+    """`res` with the losses a cited rule authorised taken out of it.
+
+    Only the dropped-line failures are touched, and only for lines the AI's
+    answer let go under a rule that exists in the person's own rules file
+    (`aistep` collects them; `aiprompt.check_proposal` is what ruled they
+    were licensed). Everything else `validate` found -- conflict markers,
+    invented lines, duplication, a regressed pattern, a loss NO rule covers
+    -- survives untouched, so this narrows the gate by exactly the width of
+    what the person wrote down and not a line more.
+    """
+    allowed = {ln.strip() for _, _, lines in licensed for ln in lines if ln.strip()}
+    if not allowed:
+        return res
+    out = ValidationResult(failures=[f for f in res.failures
+                                     if not f.startswith(_LOSS_PREFIX)],
+                           survived=dict(res.survived), honoured=dict(res.honoured))
+    for side, lines in res.lost.items():
+        rest = [l for l in lines if l.strip() not in allowed]
+        if rest:
+            out.lost[side] = rest
+            out.failures.append(
+                f"{_LOSS_PREFIX} {len(rest)} line(s) that {side} ({_side_name(side)}) has are "
+                f"missing from the result, not replaced "
+                f"(first: {_excerpt(sorted(rest)[0], 70)!r})")
+    return out
 
 
 def plan(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
@@ -217,6 +266,29 @@ def _head_candidates(manifest: Manifest, checkout: Path, roots: dict[str, Path])
                 yield d.entry, rel, live
 
 
+def _checkout_states(checkout: Path) -> dict[str, str]:
+    """Repo-relative path -> ``modified`` | ``untracked`` for every path the
+    checkout's working tree holds that its HEAD does not; absent = committed.
+    One `git status --porcelain` for the run. A no-base prompt on 2026-09-03
+    turned out to mean exactly this -- the checkout's edits were uncommitted
+    -- and the dossier says it in words instead of leaving it to be inferred."""
+    # Not through `_git`: it strips the output, and a porcelain line's first
+    # character IS the status code -- " M" loses its space and the path shifts.
+    p = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"],
+                       cwd=str(checkout), capture_output=True, text=True)
+    if p.returncode != 0:
+        return {}
+    states: dict[str, str] = {}
+    for line in p.stdout.splitlines():
+        if len(line) < 4:
+            continue
+        code, path = line[:2], line[3:].strip().strip('"')
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1].strip().strip('"')
+        states[path] = "untracked" if code == "??" else "modified"
+    return states
+
+
 def _head_items(manifest: Manifest, checkout: Path, roots: dict[str, Path],
                 already: list[MergeItem], stage: Path | None,
                 base_mode: str = "auto", base_override: bytes | None = None,
@@ -232,9 +304,10 @@ def _head_items(manifest: Manifest, checkout: Path, roots: dict[str, Path],
         return []
     seen = {i.label for i in already}
     out: list[MergeItem] = []
+    states = _checkout_states(checkout)      # one porcelain call for the whole run
     for entry, rel, live in _head_candidates(manifest, checkout, roots):
         repo_path = f"{entry.repo}/{rel}" if rel else entry.repo
-        p = subprocess.run(["git", "show", f"HEAD:{repo_path}"],
+        p = subprocess.run(["git", "show", f"HEAD:{repo_path}", "--"],
                            cwd=str(checkout), capture_output=True)
         if p.returncode != 0 or not p.stdout:
             continue
@@ -250,6 +323,7 @@ def _head_items(manifest: Manifest, checkout: Path, roots: dict[str, Path],
         item.repo = theirs                     # content of theirs (staged)
         item.repo_dest = checkout / repo_path  # where it actually installs
         rej: list = []
+        cands: list = []
         if base_override is not None:
             # Supplied from outside the checkout. Not inferred, not phantom-
             # checked: the check is one-directional (it cannot see bases from
@@ -264,7 +338,7 @@ def _head_items(manifest: Manifest, checkout: Path, roots: dict[str, Path],
             found = None
         else:
             found = infer_base(checkout, repo_path, live.read_bytes(), p.stdout,
-                               rejected=rej)
+                               rejected=rej, candidates=cands)
         if found is not None:
             blob, sha = found
             base_f = stage / (theirs.stem + f".base-{sha}")
@@ -281,6 +355,8 @@ def _head_items(manifest: Manifest, checkout: Path, roots: dict[str, Path],
             # the cost of deletions invented for content one side never had.
             if base_mode == "sibling":
                 item.base = sib
+        item.candidates = cands
+        item.checkout_state = states.get(repo_path, "committed")
         if entry.strategy in MERGE_REFUSED_STRATEGIES:
             layers = ", ".join([entry.repo, *entry.overlays]) or entry.repo
             item.reason = (f"'{entry.strategy}' composes its target; merge the "
@@ -373,9 +449,18 @@ PHANTOM_MIN_LINES = 3
 PHANTOM_RATIO = 0.8
 
 
+def _iso_date(unix_ts: str) -> str:
+    import datetime as _dt
+    try:
+        return _dt.datetime.fromtimestamp(int(unix_ts)).date().isoformat()
+    except (ValueError, OverflowError, OSError):
+        return ""
+
+
 def infer_base(checkout: Path, repo_path: str, ours: bytes, theirs: bytes,
                max_commits: int = 25,
-               rejected: list | None = None) -> tuple[bytes, str] | None:
+               rejected: list | None = None,
+               candidates: list | None = None) -> tuple[bytes, str] | None:
     """Best-effort ancestor for a live-vs-checkout merge.
 
     Nothing records which commit a live tree was last synced to, so the
@@ -416,10 +501,14 @@ def infer_base(checkout: Path, repo_path: str, ours: bytes, theirs: bytes,
     """
     norm = _normalize_eol
     ours_n, theirs_n = norm(ours), norm(theirs)
-    rc, out = _git(["log", "--format=%H", "--follow", "--", repo_path], cwd=checkout)
+    # `%ct` rides along on the same subprocess: the dossier wants the commit
+    # dates, and a second `git log` for them would be the #51 shape.
+    rc, out = _git(["log", "--format=%H %ct", "--follow", "--", repo_path], cwd=checkout)
     if rc != 0 or not out:
         return None
-    shas = out.split()[:max_commits + 1]
+    pairs = [l.split() for l in out.splitlines() if l.strip()]
+    dates = {p[0]: _iso_date(p[1]) for p in pairs if len(p) == 2}
+    shas = [p[0] for p in pairs if p][:max_commits + 1]
     rc_h, head = _git(["rev-parse", "HEAD"], cwd=checkout)
     head = head.strip() if rc_h == 0 else ""
     if head and head not in shas:
@@ -427,12 +516,26 @@ def infer_base(checkout: Path, repo_path: str, ours: bytes, theirs: bytes,
 
     scored: list[tuple[int, bytes, str, bool, bool]] = []   # (score, blob, sha7, rejected, eq_theirs)
     for sha in shas:
-        p = subprocess.run(["git", "show", f"{sha}:{repo_path}"],
+        # The trailing "--" is git's own separator, on every platform: what
+        # precedes it is a revision, so git never stats it as a path. Without
+        # it git first checks whether "<40-hex>:<path>" exists as a FILE
+        # relative to cwd (on any OS -- the same check that yields "ambiguous
+        # argument" when such a file exists). On Windows that stat itself
+        # fails once cwd + 41 + len(path) crosses 260 characters, "Filename
+        # too long" (rc 128): every candidate is skipped and the merge is
+        # refused as "no common ancestor". Measured 2026-09-05 on a scratch
+        # world at a 198-character cwd; "HEAD:" survived where the full sha
+        # did not. Universal git hygiene, not a platform branch: every
+        # `git show <rev>:<path>` in this package carries the "--".
+        p = subprocess.run(["git", "show", f"{sha}:{repo_path}", "--"],
                            cwd=str(checkout), capture_output=True)
         if p.returncode != 0 or not p.stdout:
             continue
         cand = norm(p.stdout)
         if cand == ours_n:
+            if candidates is not None:                               # the list is PARTIAL past here
+                candidates.append(Candidate(sha[:7], dates.get(sha, ""), 0, False,
+                                            cand == theirs_n, exact=True))
             return (p.stdout, sha[:7])                               # rule 2
         eq_theirs = cand == theirs_n
         is_rejected = False
@@ -448,6 +551,8 @@ def infer_base(checkout: Path, repo_path: str, ours: bytes, theirs: bytes,
         score = sum((i2 - i1) + (j2 - j1)
                     for tag, i1, i2, j1, j2 in sm.get_opcodes() if tag != "equal")
         scored.append((score, p.stdout, sha[:7], is_rejected, eq_theirs))
+        if candidates is not None:
+            candidates.append(Candidate(sha[:7], dates.get(sha, ""), score, is_rejected, eq_theirs))
 
     if not scored:
         return None
@@ -1144,8 +1249,10 @@ def validate(item: MergeItem, merged: Path,
             dropped = [l for l in dropped if l.strip() not in base_lines]
         if dropped:
             res.lost[side] = dropped
+            # The pane's word first (ours/theirs is what the diff tool shows),
+            # the plain gloss beside it -- the maintainer's wording, 2026-09-03.
             res.failures.append(
-                f"{_LOSS_PREFIX} {len(dropped)} line(s) that {_side_name(side)} has are "
+                f"{_LOSS_PREFIX} {len(dropped)} line(s) that {side} ({_side_name(side)}) has are "
                 f"missing from the result, not replaced "
                 f"(first: {_excerpt(sorted(dropped)[0], 70)!r})")
 
@@ -1170,7 +1277,14 @@ def validate(item: MergeItem, merged: Path,
     mc = Counter(merged_lines)
     oc = Counter(l.strip() for l in _text_of(item.live).splitlines() if len(l.strip()) > 40)
     tc = Counter(l.strip() for l in _text_of(item.repo).splitlines() if len(l.strip()) > 40)
-    dupes = [l for l, n in mc.items() if n > max(oc.get(l, 0), tc.get(l, 0))]
+    # `> 0` on the right: a line NEITHER side has cannot have been duplicated
+    # -- it is new text, which is the invented-content check's business one
+    # block up, and it already reported it by name. Without the guard, every
+    # substantial line a person writes themselves is reported twice, the
+    # second time as "content was duplicated", which is not true and sends
+    # them looking for a second copy that does not exist. Measured while
+    # hand-blending two paragraphs, 2026-09-04.
+    dupes = [l for l, n in mc.items() if n > max(oc.get(l, 0), tc.get(l, 0)) > 0]
     if dupes:
         res.failures.append(
             f"{len(dupes)} line(s) appear more often than on either side -- "
@@ -1243,6 +1357,28 @@ class MergeResult:
     restored: list[MergeItem] = field(default_factory=list)   # the tool saved over an unverified paint; put back
     discarded: list[MergeItem] = field(default_factory=list)  # --relaunch --discard: reopened without the work
     tool_exit: dict[str, int] = field(default_factory=dict)   # label -> the tool's exit code
+    # -- the AI step (0.5.21) ----------------------------------------------------
+    # Everything the model touched is a second file beside the person's, and
+    # every line the report says about it is read from the record, never
+    # inferred from the bytes (a5b). The vocabulary is #54's: staged, never
+    # merged, for an uninstalled result.
+    ai: list[tuple[MergeItem, object]] = field(default_factory=list)  # (item, aistep.AiOutcome)
+    ai_no_base: list[MergeItem] = field(default_factory=list)   # refused: a two-way guess is not a merge
+    ai_pending: list[MergeItem] = field(default_factory=list)   # a prompt written, or a backend that failed
+    ai_copied: list[MergeItem] = field(default_factory=list)    # copied: no .merged, or an untouched seed
+    ai_unchanged: list[MergeItem] = field(default_factory=list) # .merged is still the copied proposal
+    ai_edited: list[tuple[MergeItem, int]] = field(default_factory=list)  # yours; n lines from the proposal
+    ai_stale: dict[str, list[str]] = field(default_factory=dict)  # label -> the sides that moved since
+    ai_declined: list[MergeItem] = field(default_factory=list)  # --accept asked, and was not told yes
+    # -- the deep step (U5, #64) -------------------------------------------------
+    # label -> the answer index `.merged` is byte-for-byte equal to, when that
+    # is a deep variant (n >= 1); the accept question carries THAT answer's
+    # guarantees and `chosen` moves to it only on a yes.
+    ai_matching: dict[str, int] = field(default_factory=dict)
+    # (item, the loss-check lines) for a deep variant at --accept: a tripwire,
+    # printed, never the gate (C8).
+    ai_tripwire: list[tuple[MergeItem, list[str]]] = field(default_factory=list)
+    ai_records: dict[str, object] = field(default_factory=dict)  # label -> airecord.Record
 
 
 def two_way_labels(manifest: Manifest, checkout: Path,
@@ -1290,7 +1426,7 @@ def two_way_labels(manifest: Manifest, checkout: Path,
             if not live.is_file():
                 continue
             repo_path = f"{entry.repo}/{rel}" if rel else entry.repo
-            p_ = subprocess.run(["git", "show", f"HEAD:{repo_path}"],
+            p_ = subprocess.run(["git", "show", f"HEAD:{repo_path}", "--"],
                                 cwd=str(checkout), capture_output=True)
             if p_.returncode != 0 or not p_.stdout:
                 continue
@@ -1325,8 +1461,17 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
         preview: bool = False, base_mode: str = "auto",
         confirm_loss=None, base_override: bytes | None = None,
         base_label: str = "", cod_ratio: float | None = None,
-        box_tags=frozenset(), repo=None) -> MergeResult:
+        box_tags=frozenset(), repo=None,
+        ai=None, confirm_ai=None) -> MergeResult:
     """Plan, seed, validate and (optionally) hand off each divergent file.
+
+    `ai` (an ``aistep.AiOptions``) runs each file through the AI step: the
+    proposal lands in ``<label>.merged-ai`` beside the person's file and is
+    copied into ``.merged`` only when the person had no result of their own
+    there -- no file, or the untouched seed this run would re-write anyway;
+    an edited result is never copied over. The record beside it says so. `confirm_ai(item, record) -> bool` is asked before
+    ``--accept`` installs a proposal the person never touched; the default
+    asks on a console and refuses anywhere a console is absent.
 
     `box_tags` and `repo` feed the seed-state check below; `status` passes the
     same two, so the two verbs read one answer. Both are optional: without
@@ -1380,6 +1525,17 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
                 i.reason = (f"seeded and {st}: yours since delivery, so not merged "
                             f"unless you name it (ccs merge {i.label}); "
                             f"`ccs seed` re-asks the question")
+    if ai is not None:
+        # A two-way guess is not a merge. Without an ancestor the model would
+        # be choosing between two files with nothing to say which line is a
+        # deletion and which an addition -- the one thing this whole design
+        # refuses to guess (#19, criterion 1). Refused VISIBLY, before any
+        # prompt is built. The result carries them for the CLI's exit code.
+        for i in items:
+            if i.mergeable and i.base is None:
+                i.reason = ("no common ancestor: a two-way guess is not a merge -- "
+                            "supply one (--base-file) or resolve the file by hand")
+                res.ai_no_base.append(i)
     if base_override is not None and union:
         raise MergeError("--union keeps both sides without review, which is the opposite "
                          "of an adoption merge: a supplied base is merged conflict-on-delete "
@@ -1411,6 +1567,14 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
     # reopen safety are resolved once here rather than rebuilt per file.
     prof = inject_profile_for(resolved_tool, registry) if resolved_tool else None
     safe_reopen = reopen_is_safe(resolved_tool, registry) if resolved_tool else False
+    # The remote leg of the dossier: once per run, never per file, and never
+    # a fetch -- `status` owns the network.
+    remote = None
+    if ai is not None and repo is not None:
+        try:
+            remote = repo.ahead_behind()
+        except Exception:
+            remote = None
 
     for item in mergeable:
         safe = item.label.replace("/", "__").replace("\\", "__")
@@ -1428,12 +1592,153 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
         # did coincide with ours it was mistaken for a fresh seed and
         # overwritten, discarding real work done in the diff tool.
         stamp = merged.parent / (merged.name + ".seed")
-        if not merged.exists() or (stamp.exists()
-                                   and not _differs_bytes(merged, stamp)):
+        fresh = not merged.exists()
+        untouched = (not fresh and stamp.exists() and not _differs_bytes(merged, stamp))
+        # `yours` is the one fact the copy rule below needs, and it is decided
+        # HERE so the two cannot disagree: a file this run re-seeded is not
+        # the person's work, whether it was absent or still the scaffold ccs
+        # wrote last time. Measured on a scratch world at 23:24 -- the normal
+        # two-step flow (one run writes the prompt AND seeds .merged, the next
+        # carries the answer) left the proposal uncopied and printed
+        # "NOT INSTALLED -- unresolved conflict markers" over ccs's own seed.
+        if fresh or untouched:
             seed(item, merged, union=union, cod_ratio=cod_ratio)   # absent, or untouched
             stamp.write_bytes(merged.read_bytes())
         else:
-            res.resumed.append(item)          # human edits present: keep them
+            res.resumed.append(item)          # edits present: keep them
+        # THE THIRD ARM (0.5.21). Two files gave two states -- fresh, or
+        # "differs from the seed, so yours". A proposal copied into .merged
+        # by --ai differs from the seed too, and reading it as yours was
+        # measured wrong in both directions (the consultation's M1): the
+        # model's work described as the person's, or the next run re-seeding
+        # over it. The record beside the proposal is the fact; the bytes are
+        # compared against what was COPIED, never against the current
+        # proposal, so a later run that writes a new proposal cannot relabel
+        # the person's file.
+        rec = airecord.load(airecord.record_path(merged))
+        if rec is not None and item in res.resumed:
+            st = airecord.state(rec, merged.read_bytes())
+            matching = airecord.matching_answer(rec, merged.read_bytes())
+            if st == "unchanged" or matching is not None:
+                # `.merged` is the copy ccs made, or byte-for-byte another of
+                # the record's answers -- a deep variant the person put there
+                # (U5, #64). Either way it is the AI's, not theirs: unreviewed
+                # until --accept asks with THAT answer's guarantees, and
+                # `chosen` reaches the record only on a yes. `is not None`,
+                # not truthiness: answer 0 is an answer, and a `.merged` moved
+                # BACK to it must move `chosen` back too, or the record keeps
+                # claiming a variant the person no longer has (v0.6.5 sweep,
+                # survivor M10).
+                res.resumed.remove(item)
+                res.ai_unchanged.append(item)
+                res.ai_records[item.label] = rec
+                if matching is not None:
+                    res.ai_matching[item.label] = matching
+                stale = airecord.stale_sides(rec, item.live.read_bytes(), item.repo.read_bytes())
+                if stale:
+                    res.ai_stale[item.label] = stale
+            elif st in ("edited", "not-copied") and airecord.proposal_path(merged).is_file():
+                # `not-copied` is the third state the record can be in and the
+                # one the report used to pass over in silence: the person had
+                # already resolved the file themselves, so the copy rule never
+                # fired, and a proposal now sits beside their work with nothing
+                # saying so. Both cases say the same true thing -- this file is
+                # yours and it differs from the proposal by N lines -- so both
+                # take the same line. A delta of zero says nothing at all: the
+                # bytes agreeing is a coincidence this tool refuses to read as
+                # provenance (the whole reason the record exists).
+                delta = _line_delta(merged, airecord.proposal_path(merged))
+                if delta:
+                    res.ai_edited.append((item, delta))
+                    res.ai_records[item.label] = rec
+        if ai is not None:
+            lg = livegit.probe(item.live)
+            dossier = render_dossier(item, remote=remote, live=lg)
+            facts = dossier_facts(item, live=lg)
+            recipe_out = None
+            for step in ai.plan():
+                if step.kind == "deep":
+                    # The deep step (U4/U5, #64) reads the recipe's result --
+                    # or git's clean merge when the recipe had nothing to
+                    # decide -- for meaning, in a sandbox, under the scope.
+                    # Its answer is a numbered variant beside the others,
+                    # never copied, never chosen; a failure is pending work.
+                    from . import aideep
+                    mech, why = _mechanical_for(item, recipe_out, ws / (safe + ".ai-work"))
+                    if mech is None:
+                        dout = aistep.AiOutcome("deep-skipped", kind="deep", backend=step.backend,
+                                                scope_allowed=ai.scope, error=why)
+                    else:
+                        variants = ([airecord.proposal_path(merged)]
+                                    if airecord.proposal_path(merged).is_file() else [])
+
+                        def _tripwire(candidate: Path, _item=item) -> list[str]:
+                            return list(validate(_item, candidate, probes=probes).failures)
+                        dout = aideep.deep_step(
+                            label=item.label, base=item.base.read_bytes(), ours=item.live.read_bytes(),
+                            theirs=item.repo.read_bytes(), mechanical=mech, variants=variants,
+                            entry=item.entry, rel=item.rel, checkout_repo=checkout,
+                            live_root=_live_root_of(item), opts=ai, step=step, scope=ai.scope,
+                            workdir=ws / (safe + aisandbox_suffix()), dossier=dossier, facts=facts,
+                            merged=merged, tripwire=_tripwire, base_kind=_base_kind(item))
+                    res.ai.append((item, dout))
+                    if dout.status in ("deep-failed", "deep-escaped", "deep-skipped"):
+                        res.ai_pending.append(item)
+                    continue
+                # The step names its own backend and `ai_step` reads the
+                # OPTIONS', so a plan whose two steps differ
+                # (`--ai claude,deep:lmstudio`) would have run the recipe on
+                # whichever backend `_ai_options` happened to put there. The
+                # options are per run; the backend is per step. (v0.6.5 sweep,
+                # survivor M6.)
+                step_opts = ai if step.backend == ai.backend else replace(ai, backend=step.backend)
+                out = aistep.ai_step(label=item.label, ours=item.live, base=item.base,
+                                     theirs=item.repo, merged=merged, opts=step_opts,
+                                     workdir=ws / (safe + ".ai-work"),
+                                     dossier=dossier, base_kind=_base_kind(item), facts=facts)
+                recipe_out = out
+                res.ai.append((item, out))
+                if out.status in ("prompt-written", "backend-failed"):
+                    # Nothing to validate: the prompt is for the person to
+                    # carry, or the backend said no. The report says which;
+                    # the exit code says work is pending.
+                    res.ai_pending.append(item)
+                if out.status != "proposed":
+                    continue
+                # The validator is the backstop on the assembled file -- the
+                # same gate a hand merge passes -- and the record says what
+                # it said. With ONE difference, and it is the whole point of
+                # a rules file: `validate` compares the result against the
+                # two sides and has never heard of rules, so a drop the
+                # person authorised in their own words reads to it as content
+                # lost by accident. Every such drop has already been ruled on
+                # by `check_proposal` against the rules actually loaded; here
+                # they are subtracted from the loss, and the report says
+                # which rule let each go.
+                v_ai = validate(item, out.proposal, probes=probes)
+                if not v_ai.ok and out.licensed:
+                    v_ai = _minus_licensed(v_ai, out.licensed)
+                if not v_ai.ok:
+                    out.record.valid = False
+                    out.record.failures = list(v_ai.failures)
+                    airecord.write(airecord.record_path(merged), out.record)
+                    out.status = "rejected"
+                    out.failures = list(v_ai.failures)
+                elif fresh or untouched:
+                    # The copy rule: the person had no result of their own --
+                    # no file, or the scaffold ccs seeded and nobody edited --
+                    # so the proposal becomes the file the tool and --accept
+                    # work on, and the record says it was copied, once, never
+                    # rewritten. An EDITED result is never copied over.
+                    blob = out.proposal.read_bytes()
+                    merged.write_bytes(blob)
+                    out.record.mark_copied(blob)
+                    airecord.write(airecord.record_path(merged), out.record)
+                    res.ai_copied.append(item)
+                    res.ai_unchanged.append(item)
+                    res.ai_records[item.label] = out.record
+            if item in res.ai_pending:
+                continue
         # DO NOT reopen a file we just decided to resume. The merge tool is
         # handed `merged` as its OUTPUT pane, and the common ones treat that
         # as a destination rather than an input: BeyondCompare's documented
@@ -1454,7 +1759,7 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
         #   inject:<p>   -- on --relaunch, reopen and paint the work back in;
         #                   `--discard` is the old destructive reopen, named
         #   writes-only  -- reopen only on --relaunch (unchanged, destructive)
-        resumed_item = item in res.resumed
+        resumed_item = item in res.resumed or item in res.ai_unchanged
         if (launch_tool and not preview and resumed_item and relaunch
                 and not discard and prof is not None):
             rc = _inject_flow(res, item, merged, item.base or empty, resolved_tool,
@@ -1477,6 +1782,25 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
             res.previewed.append(item)
             continue
         v = validate(item, merged, probes=probes)
+        # The same subtraction as the proposal's own gate, and for the same
+        # reason -- but read from the RECORD, so it survives the run that
+        # made it. `.merged` here may BE the proposal (copied a moment ago,
+        # or last week), and refusing it now for a drop the person's own
+        # rules authorised would be the tool arguing with itself one line
+        # after saying "validation passed".
+        if not v.ok:
+            _rec = airecord.load(airecord.record_path(merged))
+            if _rec is not None and _rec.valid and _rec.licensed:
+                v = _minus_licensed(v, [(0, [], list(_rec.licensed))])
+        if not v.ok and item.label in res.ai_matching:
+            # `.merged` is a deep variant (U5, #64), which may hold text no
+            # side wrote: the loss, invented-content and duplication checks
+            # are a TRIPWIRE for it -- printed beside the accept question,
+            # never the gate (C8). Conflict markers, a regressed pattern and
+            # a credential shape still gate.
+            v, trip = _deep_tripwire(v)
+            if trip:
+                res.ai_tripwire.append((item, trip))
         # "A human resolved it" = a tool was launched, or the workspace file
         # carries edits since seeding (the headless flow: edit, re-run).
         human = launch_tool or item in res.resumed
@@ -1490,6 +1814,24 @@ def run(manifest: Manifest, checkout: Path, roots: dict[str, Path], *,
             continue
         if v.honoured:
             res.honoured.append((item, v))
+        if accept and item in res.ai_unchanged:
+            # The proposal the person never touched. "Identical bytes" cannot
+            # say whether they read it; the record can say whether they ever
+            # answered yes -- and that is the only thing stored. Non-interactive
+            # runs never say yes. A deep variant in `.merged` (U5, #64) is
+            # asked with ITS guarantees: `chosen` moves to it in memory for
+            # the question, and reaches the record only on a yes.
+            rec = res.ai_records[item.label]
+            previous = rec.chosen
+            rec.chosen = res.ai_matching.get(item.label, previous)
+            if not rec.accepted_unchanged or rec.chosen != previous:
+                ask_ai = confirm_ai or _ask_ai_on_console
+                if not ask_ai(item, rec):
+                    res.ai_declined.append(item)
+                    continue
+                from datetime import date as _date
+                rec.accepted_unchanged = _date.today().isoformat()
+                airecord.write(airecord.record_path(merged), rec)
         if accept:
             bdir = roots["USER_CLAUDE"] / "backups" / "ccs-merge"
             _write_back(item, merged, bdir, live_only=item.base_supplied)
@@ -1673,8 +2015,8 @@ def _ask_loss_on_console(item: MergeItem, v: ValidationResult) -> bool:
         first = f"If the payload removed {those} on purpose, install the result: "
         second = f"If {they} should have stayed, answer "
     else:
-        first = ("If each of those lines was dropped on purpose -- the payload's by the "
-                 "payload, yours by you -- install the result: ")
+        first = ("If each of those lines was dropped on purpose -- the payload's (by the "
+                 "payload), yours (by you) -- install the result: ")
         second = "If any of them should have stayed, answer "
     print(f"  {first}{c('bold', 'y')}.")
     try:
@@ -1697,6 +2039,200 @@ def _side_name(side: str) -> str:
     """'ours'/'theirs' as a person reads them. Same words as the no-base
     prompt, so the prompt and the failure that follows it agree."""
     return "your live file" if side == "ours" else "the payload's copy"
+
+
+def _ask_ai_on_console(item: MergeItem, rec) -> bool:
+    """Default `confirm_ai`: the proposal in `.merged` is still exactly what
+    ccs wrote there, and nothing ccs can see says a person read it. Say so,
+    say what each answer does, ask, default no. Non-interactive never yes."""
+    if not interactive():
+        return False
+    c = render.c
+    when = (rec.created or "")[:10]
+    answer = rec.answer if isinstance(rec.answer, dict) else {}
+    if rec.chosen:
+        # a deep variant (U5, #64): named by its number, with the backend
+        # that made it and the guarantees line it carries
+        which = (f"answer .merged-ai.{rec.chosen} ({airecord.answer_kind(answer)} via "
+                 f"{answer.get('backend') or rec.backend})")
+        made = (answer.get("created") or rec.created or "")[:10]
+    else:
+        which, made = "proposal", when
+    print(f"{c('bold_cyan', item.label)}: this result is the AI's {which}, unchanged "
+          f"since ccs wrote it on {made} "
+          f"({c('dim', 'backend ' + (answer.get('backend') or rec.backend) + ('; rules ' + rec.rules_path + ' @ ' + rec.rules_sha[:7] if rec.rules_path else '; no rules file'))}).")
+    if answer.get("guarantees"):
+        print("  " + c("dim", str(answer["guarantees"])))
+    print("  " + c("yellow", "Nothing here has been through your eyes that ccs can see."))
+    print(f"  If you have read it and want it installed: {c('bold', 'y')}.")
+    try:
+        answer = input(f"  If you have not, answer {c('bold', 'N')} and open it "
+                       f"({c('bold', 'ccs diff ' + item.label + ' --ai')}).  [y/N] ")
+    except (EOFError, KeyboardInterrupt):
+        return False
+    return answer.strip().lower() in ("y", "yes")
+
+
+def aisandbox_suffix() -> str:
+    """The deep step's sandbox directory suffix, from its own module (a
+    late import: the AI modules are never loaded at CLI start)."""
+    from . import aisandbox
+    return aisandbox.SANDBOX_SUFFIX
+
+
+def _live_root_of(item: MergeItem) -> Path | None:
+    """The territory root the item's live file sits under: `live` is
+    `<root>/<entry.target>/<rel>`, so strip those parts back off."""
+    target = getattr(item.entry, "target", None)
+    if not target:
+        return None
+    strip = len(Path(target).parts) + (len(Path(item.rel).parts) if item.rel else 0)
+    parts = item.live.parts
+    if strip >= len(parts):
+        return None
+    return Path(*parts[:len(parts) - strip])
+
+
+def _mechanical_for(item: MergeItem, recipe_out, workdir: Path) -> tuple[bytes | None, str]:
+    """What the deep step reads for meaning: the recipe's proposal when it
+    made one, git's own clean merge when there was nothing to decide, and
+    nothing -- with the reason -- otherwise."""
+    if recipe_out is None or recipe_out.status == "no-hunks":
+        if item.base is None:
+            return None, "no common ancestor, so there is no merged file to read"
+        from . import basefind
+        lines, rc = basefind.merge_file_diff3(
+            basefind.lines_of(item.live.read_bytes()), basefind.lines_of(item.base.read_bytes()),
+            basefind.lines_of(item.repo.read_bytes()), workdir)
+        if rc == 255:
+            return None, "git merge-file failed on the three inputs"
+        return "\n".join(lines).encode("utf-8"), ""
+    if recipe_out.status == "proposed" and recipe_out.proposal is not None:
+        return recipe_out.proposal.read_bytes(), ""
+    return None, (f"the recipe's result was {recipe_out.status}, so there is no merged file to read "
+                  f"-- resolve that first")
+
+
+def _deep_tripwire(v: ValidationResult) -> tuple[ValidationResult, list[str]]:
+    """Split a deep variant's validation into what still gates and what is
+    only reported: the loss, invented-content and duplication checks are
+    the tripwire (a deep answer may write text); everything else stands."""
+    trip = [f for f in v.failures
+            if f.startswith(_LOSS_PREFIX) or "appear in neither side nor the base" in f
+            or "content was duplicated" in f]
+    keep = [f for f in v.failures if f not in trip]
+    return ValidationResult(failures=keep, survived=dict(v.survived), honoured=dict(v.honoured),
+                            lost=dict(v.lost)), trip
+
+
+def _base_kind(item: MergeItem) -> str:
+    """How the base was chosen, for the record and the cache key."""
+    if item.base_supplied:
+        return "supplied"
+    if item.sibling is not None and item.base == item.sibling[0]:
+        return "sibling"
+    return "inferred"
+
+
+def _base_sha7(item: MergeItem) -> str:
+    """The seven characters after ``.base-`` in the staged base's name, or
+    the whole name for a supplied/sibling base."""
+    if item.base is None:
+        return ""
+    name = item.base.name
+    return name.rsplit(".base-", 1)[1] if ".base-" in name else name
+
+
+def render_dossier(item: MergeItem, remote=None, live=None) -> str:
+    """What ccs knows about this file's history, in plain words, for the
+    prompt -- and for a person, since the display is the crux.
+
+    Evidence, never a decision: ccs chose the base; the model reads why and
+    what else there was. Sections in `resolution_hints`' own order (a
+    deterministic rule beats a heuristic beats a model): the base and how;
+    the hints the terminal prints, verbatim; the other versions in the
+    checkout's history, nearest first by line distance -- a weak ranking,
+    and it says so; whether the payload's copy in the checkout is committed
+    or a working-tree edit; the remote leg (one fetch-free `ahead_behind`
+    per run, passed in); and the live tree's own git, from `livegit`.
+    Commit dates are here; file mtimes are not -- theirs is materialised
+    seconds before the merge and live's is whenever collect last ran, so
+    neither is a fact about the content (see `resolution_hints`)."""
+    kind = _base_kind(item)
+    sha = _base_sha7(item)
+    by_sha = {c.sha: c for c in item.candidates}
+    lines: list[str] = []
+    if item.base is None:
+        lines.append("The base: none -- no common ancestor could be found.")
+    else:
+        when = by_sha[sha].date if sha in by_sha and by_sha[sha].date else ""
+        lines.append(f"The base ccs chose: {sha} ({kind})"
+                     + (f", committed {when}." if when else "."))
+        if item.base_supplied and item.base_label:
+            lines.append(f"It was supplied from outside the checkout: {item.base_label}.")
+    for h in resolution_hints(item):
+        lines.append(f"Hint: {h}")
+    others = [c for c in item.candidates if c.sha != sha and not c.exact]
+    stopped = next((c for c in item.candidates if c.exact), None)
+    if others:
+        parts = []
+        for c in sorted(others, key=lambda c: c.score):
+            tags = []
+            if c.eq_theirs:
+                tags.append("equals the payload's copy")
+            if c.rejected:
+                tags.append("rejected: it would attribute deletions to you that the payload still has")
+            parts.append(f"{c.sha} {c.date or 'undated'} distance {c.score}"
+                         + (f" ({'; '.join(tags)})" if tags else ""))
+        lines.append("Other versions of this file in the checkout's history, nearest to your "
+                     "live file first by line distance (a weak ranking; --base-search will "
+                     "rank by what each would lose): " + "; ".join(parts) + ".")
+    if stopped is not None:
+        lines.append(f"The search stopped at {stopped.sha} ({stopped.date or 'undated'}), "
+                     f"which equals your live file exactly; older versions were not compared.")
+    state = item.checkout_state
+    if state == "committed":
+        lines.append("The payload's copy in the checkout is committed at HEAD.")
+    elif state in ("modified", "untracked"):
+        lines.append(f"The payload's copy in the checkout has an UNCOMMITTED edit in the "
+                     f"working tree ({state}); the committed version is what is merged.")
+    else:
+        lines.append("Whether the checkout's copy is committed is unknown.")
+    if remote and any(x is not None for x in remote):
+        ahead, behind = remote
+        if not ahead and not behind:
+            lines.append("The checkout is in sync with its remote (as of the last fetch).")
+        else:
+            lines.append(f"The checkout is {ahead or 0} commit{'' if ahead == 1 else 's'} ahead of "
+                         f"its remote and {behind or 0} behind (as of the last fetch).")
+    else:
+        lines.append("The checkout's position against its remote is unknown (no fetch this run).")
+    lines.append(livegit.describe(live) if live is not None
+                 else "Your live tree was not probed for a git history.")
+    return "\n".join(lines)
+
+
+def dossier_facts(item: MergeItem, live=None) -> dict:
+    """The structured facts that join the cache key -- everything that
+    changes what a proposal is made from, nothing that merely changes how
+    it is described. The remote leg stays out: a fetch elsewhere must not
+    invalidate an answer about the same three files."""
+    facts = {"base_sha": _base_sha7(item), "checkout_state": item.checkout_state,
+             "live_tracked": bool(live.tracked) if live is not None else False,
+             "live_head": (live.recent[0][0] if live is not None and live.recent else "")}
+    return facts
+
+
+def _line_delta(a: Path, b: Path) -> int:
+    """How many lines differ between two files, the way a person counts
+    them: one per line added, removed or replaced."""
+    al = _normalize_eol(a.read_bytes()).decode("utf-8", "replace").splitlines()
+    bl = _normalize_eol(b.read_bytes()).decode("utf-8", "replace").splitlines()
+    n = 0
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, al, bl, autojunk=False).get_opcodes():
+        if tag != "equal":
+            n += max(i2 - i1, j2 - j1)
+    return n
 
 
 def _dominant_eol(blob: bytes) -> bytes:

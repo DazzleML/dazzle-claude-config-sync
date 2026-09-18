@@ -1,0 +1,13 @@
+GOLDEN-DEEP | codex | bc-python-broken | scope=hunk form=tools | DIFFERS
+GOLDEN-DEEP | codex | bc-python-control | scope=hunk form=tools | MATCH
+GOLDEN-DEEP | codex | bc-python-fix-in-a | scope=hunk form=tools | KEPT (expected a refusal beyond the scope)
+GOLDEN-DEEP | codex | bc-python-fix-in-a | scope=file form=tools | DIFFERS
+GOLDEN-DEEP | codex | bc-markdown-broken | scope=hunk form=tools | MATCH
+GOLDEN-DEEP | codex | bc-markdown-control | scope=hunk form=tools | MATCH
+GOLDEN-DEEP | codex | rung-2-other-section | scope=hunk form=tools | KEPT (expected a refusal beyond the scope)
+GOLDEN-DEEP | codex | rung-2-other-section | scope=file form=tools | DIFFERS
+GOLDEN-DEEP | codex | rung-3-neighbour-file | scope=file form=tools | KEPT (expected a refusal beyond the scope)
+GOLDEN-DEEP | codex | rung-3-neighbour-file | scope=neighbours form=tools | MATCH
+GOLDEN-DEEP | codex | rung-4-far-file | scope=neighbours form=tools | KEPT (expected a refusal beyond the scope)
+GOLDEN-DEEP | codex | rung-4-far-file | scope=project form=tools | MATCH
+GOLDEN-DEEP | codex | tripwire-drop | scope=hunk form=tools | DIFFERS

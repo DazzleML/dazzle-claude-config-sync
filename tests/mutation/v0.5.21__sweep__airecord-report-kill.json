@@ -1,0 +1,68 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_airecord.py"
+    ],
+    "timestamp": "2026-09-03T21:34:11-04:00"
+  },
+  "results": [
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "re-run after test_new_record_hashes_an_empty_base_rather_than_recording_none",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M6",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "re-run after test_load_rejects_a_record_with_a_required_field_missing_or_mistyped",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M8",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "re-run after test_load_rejects_a_record_with_a_required_field_missing_or_mistyped",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M9",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "re-run after test_load_rejects_a_record_with_a_required_field_missing_or_mistyped",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M10",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "re-run after test_a_failed_write_leaves_the_previous_record_intact",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 5
+  },
+  "anomalies": []
+}

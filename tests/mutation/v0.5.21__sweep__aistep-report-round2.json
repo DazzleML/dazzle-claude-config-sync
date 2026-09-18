@@ -1,0 +1,117 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_aistep.py"
+    ],
+    "timestamp": "2026-09-03T22:04:54-04:00"
+  },
+  "results": [
+    {
+      "id": "N1",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "Inverts the no-hunks guard: files with real conflicts short-circuit as clean, clean files fall through.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N2",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "Drops the ancestry facts from the cache key: two different ancestries collide on one cached answer.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N3",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "Drops base_kind from the fingerprint: an inferred base and a supplied base share a cache entry.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N4",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "Changes the cache namespace, silently orphaning every existing cache entry.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N5",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "--ai-refresh no longer bypasses the cache: the stale answer is served anyway.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N6",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "A cache entry with no raw_response is treated as a hit, KeyError-ing instead of falling through to the backend.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N7",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "A well-formed fenced json block is discarded, so every fenced answer is reported as no-JSON.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N8",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "The proposal check runs only on already-failed parses; a clean parse is never validated against hunks or rules.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N9",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "A rejected record carries the ours bytes as its proposal instead of empty, so a bad answer looks like a real proposal.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N10",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "The accepted proposal is written to disk but its record is never persisted.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N11",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "Sub-line reports are built from the first hunk only; every later hunk's report is lost.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 5,
+    "survived": 6
+  },
+  "anomalies": []
+}

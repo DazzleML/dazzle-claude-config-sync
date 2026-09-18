@@ -1,0 +1,10 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_merge_ai.py"],
+  "mutations": [
+    {"id": "N2", "file": "dazzle_claude_config/merge.py", "original": "        if rec is not None and item in res.resumed:", "mutated": "        if rec is not None:", "note": "re-run after test_a_deleted_result_is_reseeded_and_not_called_the_ais_or_yours"},
+    {"id": "N5", "file": "dazzle_claude_config/merge.py", "original": "            elif st == \"edited\" and airecord.proposal_path(merged).is_file():", "mutated": "            elif st == \"edited\":", "note": "re-run after test_an_edited_result_whose_proposal_was_deleted_does_not_crash"},
+    {"id": "N9", "file": "dazzle_claude_config/merge.py", "original": "                    res.ai_copied.append(item)\n                    res.ai_unchanged.append(item)", "mutated": "                    res.ai_copied.append(item)", "note": "re-run after test_accept_in_the_same_run_as_the_copy_still_asks"},
+    {"id": "N10", "file": "dazzle_claude_config/merge.py", "original": "                ask_ai = confirm_ai or _ask_ai_on_console", "mutated": "                ask_ai = _ask_ai_on_console", "note": "re-run after test_confirm_ai_is_the_injection_point_for_the_question"},
+    {"id": "N11", "file": "dazzle_claude_config/merge.py", "original": "    if item.sibling is not None and item.base == item.sibling[0]:", "mutated": "    if item.sibling is not None:", "note": "re-run after test_base_kind_names_how_the_base_was_chosen"}
+  ]
+}

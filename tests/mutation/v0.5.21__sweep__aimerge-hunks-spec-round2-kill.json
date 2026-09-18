@@ -1,0 +1,8 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_aimerge.py"],
+  "mutations": [
+    {"id": "N1", "file": "dazzle_claude_config/aimerge.py", "original": "        if clean:\n            segments.append(Segment(\"clean\", clean))\n        hunk = Hunk(", "mutated": "        segments.append(Segment(\"clean\", clean))\n        hunk = Hunk(", "note": "re-run after test_parse_emits_no_empty_clean_segment_around_adjacent_or_leading_hunks"},
+    {"id": "N7", "file": "dazzle_claude_config/aimerge.py", "original": "        if len(o) == 1 and len(t) == 1:\n            return \"paragraph\"", "mutated": "        if len(o) == 1 or len(t) == 1:\n            return \"paragraph\"", "note": "re-run after test_kind_is_not_paragraph_for_one_line_against_many"},
+    {"id": "N10", "file": "dazzle_claude_config/aimerge.py", "original": "_TOKEN = re.compile(r\"\\S+\")", "mutated": "_TOKEN = re.compile(r\"[^ ]+\")", "note": "re-run after test_word_diff_splits_on_any_whitespace"}
+  ]
+}

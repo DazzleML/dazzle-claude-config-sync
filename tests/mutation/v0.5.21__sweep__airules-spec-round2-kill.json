@@ -1,0 +1,11 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_airules.py"],
+  "mutations": [
+    {"id": "N2", "file": "dazzle_claude_config/airules.py", "original": "        lines = [l.rstrip() for l in para.splitlines() if l.strip()]", "mutated": "        lines = [l.rstrip() for l in para.splitlines()]", "note": "re-run after test_blank_paragraphs_and_whitespace_lines_take_no_id"},
+    {"id": "N3", "file": "dazzle_claude_config/airules.py", "original": "        if not lines or all(l.lstrip().startswith(\"#\") for l in lines):", "mutated": "        if not lines or all(l.startswith(\"#\") for l in lines):", "note": "re-run after test_an_indented_heading_is_still_a_heading"},
+    {"id": "N5", "file": "dazzle_claude_config/airules.py", "original": "        if p.is_file():", "mutated": "        if p.exists():", "note": "re-run after test_a_directory_where_the_rules_file_should_be_is_not_a_file"},
+    {"id": "N6", "file": "dazzle_claude_config/airules.py", "original": "            return Rules(source, p, sha, split_rules(text), text, tuple(cands))", "mutated": "            return Rules(source, p, sha, split_rules(text), text, ())", "note": "re-run after the looked assertion in test_per_path_file_wins_over_default"},
+    {"id": "N7", "file": "dazzle_claude_config/airules.py", "original": "            where = \" or \".join(str(p) for p in self.looked)", "mutated": "            where = \", \".join(str(p) for p in self.looked)", "note": "re-run after the ' or ' assertion in test_no_file_is_a_named_degradation_not_a_crash"},
+    {"id": "N8", "file": "dazzle_claude_config/airules.py", "original": "            text = raw.decode(\"utf-8-sig\", errors=\"replace\")", "mutated": "            text = raw.decode(\"utf-8-sig\", errors=\"strict\")", "note": "re-run after test_undecodable_bytes_do_not_crash_the_load"}
+  ]
+}

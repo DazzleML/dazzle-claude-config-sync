@@ -1,0 +1,52 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_aimerge.py"
+    ],
+    "timestamp": "2026-09-03T21:10:53-04:00"
+  },
+  "results": [
+    {
+      "id": "N1",
+      "file": "dazzle_claude_config/aimerge.py",
+      "note": "re-run after test_parse_emits_no_empty_clean_segment_around_adjacent_or_leading_hunks",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N7",
+      "file": "dazzle_claude_config/aimerge.py",
+      "note": "re-run after test_kind_is_not_paragraph_for_one_line_against_many",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N10",
+      "file": "dazzle_claude_config/aimerge.py",
+      "note": "re-run after test_word_diff_splits_on_any_whitespace",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 3
+  },
+  "anomalies": []
+}

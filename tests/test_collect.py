@@ -141,6 +141,108 @@ def test_a1_planted_secret_refused(env):
     assert not (checkout / "dotclaude" / "agents" / "leaky.md").exists()
 
 
+def test_k2_openrouter_key_in_a_rules_file_is_refused(env):
+    """K2 (#64): an OpenRouter key pasted into an ordinary collected file --
+    the shape a person is now likeliest to have in their clipboard -- is
+    refused at collect like an Anthropic one. Anchor: before the scan knew
+    the shape this file was copied."""
+    claude, _, checkout, manifest, roots = env
+    (claude / "agents" / "rules.md").write_text(
+        "prefer the payload\nkey: sk-or-v1-" + "0123456789abcdef" * 4 + "\n", encoding="utf-8")
+    r = collect(manifest, checkout, roots)
+    assert [h.rel_path for h in r.refused_secrets] == ["dotclaude/agents/rules.md"]
+    assert r.refused_secrets[0].line_no == 2 and r.refused_secrets[0].excerpt.startswith("sk-or-v1-")
+    assert not (checkout / "dotclaude" / "agents" / "rules.md").exists()
+
+
+def _keys_manifest(checkout, *, allow: bool):
+    import json
+    from dazzle_claude_config.manifest import Manifest
+    entry = {"repo": "userclaude/keys/openrouter.env", "territory": "userclaude",
+             "target": "keys/openrouter.env", "strategy": "copy"}
+    if allow:
+        entry["allow_secrets"] = True
+    (checkout / "ccs-manifest.json").write_text(json.dumps({
+        "manifest_version": 1,
+        "territories": {"userclaude": {"root_var": "USER_CLAUDE", "repo_dir": "userclaude"}},
+        "entries": [entry]}), encoding="utf-8")
+    (checkout / "userclaude" / "keys").mkdir(parents=True, exist_ok=True)
+    return Manifest.load(checkout)
+
+
+def test_k3_allowed_entry_collects_a_keys_file(env):
+    """K3a (#64): one manifest line is how a person syncs a keys file on
+    purpose -- `allow_secrets: true` on the entry skips the credential scan
+    for it and reports the file as allowed. Anchor: without the allowance
+    branch the same file is refused."""
+    _, user, checkout, _, roots = env
+    (user / "keys").mkdir()
+    (user / "keys" / "openrouter.env").write_text(
+        "OPENROUTER_API_KEY=sk-or-v1-" + "abcdef0123456789" * 4 + "\n", encoding="utf-8")
+    manifest = _keys_manifest(checkout, allow=True)
+    r = collect(manifest, checkout, roots)
+    assert r.allowed_secrets == ["userclaude/keys/openrouter.env"]
+    assert r.refused_secrets == []
+    assert (checkout / "userclaude" / "keys" / "openrouter.env").read_text(encoding="utf-8").startswith("OPENROUTER_API_KEY=sk-or-v1-")
+
+
+def test_k3_an_allowance_is_not_a_way_past_the_hard_deny(env):
+    """Mutation survivor M7 (v0.6.1 sweep): a mutant that let an allowed
+    entry skip the deny check at the copy loop survived, because every
+    allowance test used a file no deny rule names. The comment at the
+    branch says the deny list still applies; this is that sentence as a
+    test, at the layer the branch lives: a SINGLE-FILE entry (the deny is
+    checked on the file's own name there -- a directory entry's files are
+    filtered earlier, in syncmap) naming a hard-denied file with
+    `allow_secrets: true` is refused by name, never allowed, never copied."""
+    import json
+    from dazzle_claude_config.manifest import Manifest
+    _, user, checkout, _, roots = env
+    (user / ".credentials.json").write_text('{"token": "x"}', encoding="utf-8")
+    (checkout / "ccs-manifest.json").write_text(json.dumps({
+        "manifest_version": 1,
+        "territories": {"userclaude": {"root_var": "USER_CLAUDE", "repo_dir": "userclaude"}},
+        "entries": [{"repo": "userclaude/.credentials.json", "territory": "userclaude",
+                     "target": ".credentials.json", "strategy": "copy", "allow_secrets": True}]}),
+        encoding="utf-8")
+    (checkout / "userclaude").mkdir(parents=True, exist_ok=True)
+    r = collect(Manifest.load(checkout), checkout, roots)
+    assert r.allowed_secrets == []
+    assert [rel for rel, _ in r.refused_denied] == ["userclaude/.credentials.json"]
+    assert not (checkout / "userclaude" / ".credentials.json").exists()
+
+
+def test_k3_same_entry_without_the_allowance_is_refused(env):
+    """K3b (#64): the same keys file under the same entry with no allowance
+    is refused by the scan -- blocked is the default, including is the one
+    line."""
+    _, user, checkout, _, roots = env
+    (user / "keys").mkdir()
+    (user / "keys" / "openrouter.env").write_text(
+        "OPENROUTER_API_KEY=sk-or-v1-" + "abcdef0123456789" * 4 + "\n", encoding="utf-8")
+    manifest = _keys_manifest(checkout, allow=False)
+    r = collect(manifest, checkout, roots)
+    assert r.allowed_secrets == []
+    assert [h.rel_path for h in r.refused_secrets] == ["userclaude/keys/openrouter.env"]
+    assert not (checkout / "userclaude" / "keys" / "openrouter.env").exists()
+
+
+def test_k3_the_allowed_line_prints_the_path_only(env, capsys):
+    """K3a's report: `allowed <rel> -- allow_secrets on this entry: not
+    scanned for credentials`, the path and never a line of the file; exit 0."""
+    from dazzle_claude_config.cli import main
+    claude, user, checkout, _, roots = env
+    (user / "keys").mkdir()
+    secret = "sk-or-v1-" + "fedcba9876543210" * 4
+    (user / "keys" / "openrouter.env").write_text(f"OPENROUTER_API_KEY={secret}\n", encoding="utf-8")
+    _keys_manifest(checkout, allow=True)
+    rc = main(["--checkout-dir", str(checkout), "--claude-dir", str(claude), "--user-claude", str(user),
+               "--no-color", "--no-fetch", "collect"])
+    out = capsys.readouterr().out
+    assert "allowed userclaude/keys/openrouter.env -- allow_secrets on this entry: not scanned for credentials" in out
+    assert secret not in out and rc == 0
+
+
 def test_a1_denied_filename_never_copied(env):
     """Deny-matched live files are annotated (denied_live), never copied,
     and -- per the v0.2.1 contract change (R6) -- are the guard WORKING,

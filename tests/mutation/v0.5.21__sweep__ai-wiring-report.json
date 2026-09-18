@@ -1,0 +1,173 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_merge_ai.py"
+    ],
+    "timestamp": "2026-09-03T22:26:33-04:00"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Refusal guard inverted: items WITH a base get flagged as having no ancestor.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M2",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Two-way refusal recorded on the wrong list, changing the reported category and exit code.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M3",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Freshness inverted: seeding and the AI copy rule fire on exactly the wrong files.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "State string compared wrongly: an edited proposal is treated as the untouched one.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M5",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "stale_sides called with ours/theirs swapped, so staleness is attributed to the wrong side.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M6",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Validation failure no longer flips the status to rejected.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M7",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "mark_copied skipped: the record never says the proposal was copied.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M8",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "The `continue` after a prompt-written/backend-failed step is dropped, so the item falls through to the accept path.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M9",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "Accept answer inverted: yes declines, no installs.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M10",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "accepted_unchanged never recorded, so the question is asked again forever.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M11",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "_base_kind returns the wrong kind for sibling vs inferred bases.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M12",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "_line_delta counts min instead of max, so pure additions/removals count zero.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M13",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "Backend name validation dropped: an unknown backend is accepted silently.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M14",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "Default backend changed away from PROMPT_ONLY when config names none.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M15",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "Exit-code precedence reordered: drift wins over the no-base refusal.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M16",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "The \"copied into .merged\" line is printed for every proposal, copied or not.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M17",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "Dropped `continue` duplicates the copied item's report line.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M18",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "diff --ai launches yours-vs-yours instead of proposal-vs-yours.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 13,
+    "survived": 5
+  },
+  "anomalies": []
+}

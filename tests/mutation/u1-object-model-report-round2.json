@@ -1,0 +1,78 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_transport_openai.py",
+      "tests/test_transport_cli.py",
+      "tests/test_ailib_cache.py"
+    ],
+    "timestamp": "2026-09-05T18:18:32-04:00"
+  },
+  "results": [
+    {
+      "id": "m1",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/openai.py",
+      "note": "killing test: test_endpoint_is_on_prem_is_three_valued",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m2",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/openai.py",
+      "note": "killing test: the on_prem=False assertion in test_on_prem_is_derived_from_the_endpoint_when_the_preset_does_not_say",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m6",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "killing test: test_a_chatty_cli_puts_its_envelope_on_the_LAST_line",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m8",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "killing test: test_an_upper_case_cmd_shim_that_does_not_run_is_not_reported_ready (Windows)",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m10",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "killing test: test_no_schema_means_a_schema_file_placeholder_is_dropped_too",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "m12",
+      "file": "dazzle_claude_config/_vendor/ailib/cache.py",
+      "note": "killing test: test_an_entry_with_empty_text_is_not_a_hit",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 6
+  },
+  "anomalies": []
+}

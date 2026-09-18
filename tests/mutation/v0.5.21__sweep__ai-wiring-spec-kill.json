@@ -1,0 +1,9 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_merge_ai.py"],
+  "mutations": [
+    {"id": "M6", "file": "dazzle_claude_config/merge.py", "original": "                    out.status = \"rejected\"", "mutated": "                    out.status = \"proposed\"", "note": "re-run after test_a_proposal_the_validator_refuses_is_reported_rejected_and_never_copied"},
+    {"id": "M14", "file": "dazzle_claude_config/cli.py", "original": "    backend = args.ai if args.ai != \"auto\" else (cfg.get(\"ai_merge_backend\") or aistep.PROMPT_ONLY)", "mutated": "    backend = args.ai if args.ai != \"auto\" else (cfg.get(\"ai_merge_backend\") or \"auto\")", "note": "re-run after test_ai_with_no_value_and_no_config_means_prompt_only"},
+    {"id": "M16", "file": "dazzle_claude_config/cli.py", "original": "            if item in r.ai_copied:\n                print(c(\"dim\", \"    copied into \") + c(\"bold\", \".merged\")", "mutated": "            if True:\n                print(c(\"dim\", \"    copied into \") + c(\"bold\", \".merged\")", "note": "re-run after test_a_proposal_is_not_copied_over_a_result_you_already_had"},
+    {"id": "M17", "file": "dazzle_claude_config/cli.py", "original": "        if item in r.ai_copied:\n            continue                          # said above, on the proposal's own line", "mutated": "        if item in r.ai_copied:\n            pass                              # said above, on the proposal's own line", "note": "re-run after the 'unchanged since' assertion in the canned-answer test"}
+  ]
+}

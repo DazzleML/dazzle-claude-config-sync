@@ -334,7 +334,7 @@ def read_base_from(spec: str) -> tuple[bytes, str]:
     if not at:
         repo, sha = head, "HEAD"
     sha = sha or "HEAD"
-    r = subprocess.run(["git", "-C", repo, "show", f"{sha}:{path}"], capture_output=True)
+    r = subprocess.run(["git", "-C", repo, "show", f"{sha}:{path}", "--"], capture_output=True)
     if r.returncode != 0 or not r.stdout:
         raise ValueError(f"--base-from: git show {sha}:{path} in {repo} failed: "
                          f"{r.stderr.decode('utf-8', 'replace').strip()[:120]}")

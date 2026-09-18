@@ -1,0 +1,76 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_aidossier.py"
+    ],
+    "timestamp": "2026-09-03T23:01:29-04:00"
+  },
+  "results": [
+    {
+      "id": "M8",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "re-run after test_checkout_states_reads_modified_untracked_and_renamed",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M9",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "re-run after test_checkout_states_reads_modified_untracked_and_renamed",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M11",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "re-run after test_the_candidates_are_listed_nearest_first",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M14",
+      "file": "dazzle_claude_config/merge.py",
+      "note": "re-run after test_a_half_known_remote_position_is_still_reported",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M17",
+      "file": "dazzle_claude_config/livegit.py",
+      "note": "re-run after test_the_allowlist_is_exactly_the_three_read_verbs",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M21",
+      "file": "dazzle_claude_config/livegit.py",
+      "note": "re-run after test_probe_returns_at_most_the_limit",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 6
+  },
+  "anomalies": []
+}

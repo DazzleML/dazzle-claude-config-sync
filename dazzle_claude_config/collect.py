@@ -23,6 +23,10 @@ class CollectResult:
     skipped: list[tuple[str, str]] = field(default_factory=list)  # (path, reason): wrong direction
     refused_denied: list[tuple[str, str]] = field(default_factory=list)   # (rel, pattern)
     refused_secrets: list[SecretHit] = field(default_factory=list)
+    # Files copied WITHOUT the credential scan because their manifest entry
+    # says `allow_secrets: true` -- the person's one-line, on-purpose way to
+    # sync a keys file (#64). Reported, never silent.
+    allowed_secrets: list[str] = field(default_factory=list)
     excluded: list[str] = field(default_factory=list)
     missing_live: list[str] = field(default_factory=list)  # in repo, gone locally (report only)
     git_ignored: list[str] = field(default_factory=list)   # A8 violations
@@ -106,10 +110,18 @@ def collect(manifest: Manifest, checkout: Path, roots: dict[str, Path],
             if pattern:
                 result.refused_denied.append((display, pattern))
                 continue
-            hits = scan_file(src, display)
-            if hits:
-                result.refused_secrets.extend(hits)
-                continue
+            if d.entry.allow_secrets:
+                # The entry's own declaration: this file is MEANT to carry a
+                # credential (a keys file the person syncs on purpose). The
+                # scan is skipped for it and the report says so, per file, so
+                # the exemption is never silent. The deny list above still
+                # applies -- an allowance is not a way past a hard deny.
+                result.allowed_secrets.append(display)
+            else:
+                hits = scan_file(src, display)
+                if hits:
+                    result.refused_secrets.extend(hits)
+                    continue
 
             repo_rel_guard = f"{d.entry.repo}/{rel}" if rel else d.entry.repo
             if repo_rel_guard in dirty:

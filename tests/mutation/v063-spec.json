@@ -1,0 +1,143 @@
+{
+  "test_command": [
+    "python",
+    "-m",
+    "pytest",
+    "-q",
+    "-x",
+    "-p",
+    "no:cacheprovider",
+    "tests/test_transport_cli.py",
+    "tests/test_ailib_types.py",
+    "tests/test_ailib_presets.py",
+    "tests/test_vendored_ailib.py"
+  ],
+  "mutations": [
+    {
+      "id": "cli-1",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "original": "_PLACEHOLDERS = (\"{model}\", \"{schema}\", \"{schema_file}\", \"{prompt_file}\", \"{output_file}\", \"{cwd}\", \"{tools}\")",
+      "mutated": "_PLACEHOLDERS = (\"{model}\", \"{schema}\", \"{schema_file}\", \"{prompt_file}\", \"{output_file}\", \"{cwd}\")",
+      "note": "Dropped the {tools} placeholder from the recognized-placeholder tuple, so any {tools} token in a command template is treated as ordinary text instead of being substituted/stripped -- a removed-guard-clause style mutant."
+    },
+    {
+      "id": "cli-2",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "original": "\"{cwd}\": req.workdir or str(scratch),",
+      "mutated": "\"{cwd}\": str(scratch) or req.workdir,",
+      "note": "Swapped operand order in the `or` expression; since str(scratch) is always truthy, {cwd} now always resolves to the scratch dir even when req.workdir is set -- a populated workdir would never actually be used for {cwd}."
+    },
+    {
+      "id": "cli-3",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "original": "\"{tools}\": spec.tools if req.workdir else \"\",",
+      "mutated": "\"{tools}\": spec.tools if not req.workdir else \"\",",
+      "note": "Inverted the guard: grants the tools string when there is NO workdir, and withholds it when a workdir IS given -- exactly backwards from the documented \"a grant never reaches a call that gave the child nothing to work in\" behavior."
+    },
+    {
+      "id": "cli-4",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "original": "        if \"{tools}\" in used:\n            honoured.append(TOOLS)",
+      "mutated": "        if \"{tools}\" not in used:\n            honoured.append(TOOLS)",
+      "note": "Boolean flip on the membership check; TOOLS is now reported as honoured precisely when the {tools} placeholder was NOT actually substituted into argv."
+    },
+    {
+      "id": "cli-5",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "original": "        if \"{tools}\" in tpl and spec.tools:\n            caps.add(TOOLS)",
+      "mutated": "        if \"{tools}\" in tpl or spec.tools:\n            caps.add(TOOLS)",
+      "note": "Changed `and` to `or`; the TOOLS capability is now advertised if EITHER the template mentions {tools} OR the spec sets a tools grant, even when the other condition is false (e.g. spec.tools set but template has no {tools} placeholder, or vice versa)."
+    },
+    {
+      "id": "cli-6",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "original": "cwd = Path(req.workdir) if req.workdir else scratch",
+      "mutated": "cwd = Path(req.workdir) if not req.workdir else scratch",
+      "note": "Inverted guard on the child's working directory: when req.workdir IS set, cwd now becomes Path(req.workdir) only when it is falsy (never), so the child always runs in scratch instead of the caller-provided directory -- and Path(\"\") would be attempted when workdir is empty."
+    },
+    {
+      "id": "cli-7",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "original": "cwd=str(cwd), env=env)",
+      "mutated": "cwd=str(scratch), env=env)",
+      "note": "Swapped the subprocess.run cwd argument from the resolved `cwd` (caller's workdir or scratch) to always `scratch`, so a populated working directory is silently ignored on the non-streaming path."
+    },
+    {
+      "id": "cli-8",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "original": "rc, out, err = self._stream(argv, env, cwd, stdin, req)",
+      "mutated": "rc, out, err = self._stream(argv, env, scratch, stdin, req)",
+      "note": "Swapped the cwd argument passed to _stream() from `cwd` to `scratch`, so the streaming invocation path always runs the child in the throwaway scratch dir instead of the caller-provided workdir."
+    },
+    {
+      "id": "types-1",
+      "file": "dazzle_claude_config/_vendor/ailib/types.py",
+      "original": "TOOLS = \"tools\"                   # given a working directory, the backend may read and write in it",
+      "mutated": "TOOLS = \"tool\"                   # given a working directory, the backend may read and write in it",
+      "note": "Typo'd the TOOLS capability constant's string value, so any capability-set membership test against the literal \"tools\" elsewhere (or serialized/compared capability sets) silently mismatches."
+    },
+    {
+      "id": "types-2",
+      "file": "dazzle_claude_config/_vendor/ailib/types.py",
+      "original": "    command: tuple[str, ...] = ()\n    tools: str = \"\"\n    answer: str = \"stdout\"",
+      "mutated": "    command: tuple[str, ...] = ()\n    tools: str = \"Read,Grep\"\n    answer: str = \"stdout\"",
+      "note": "Changed Spec.tools' default from empty to a nonempty grant, so any Spec built without explicitly setting tools= now silently carries a (narrow but nonzero) tools grant instead of none."
+    },
+    {
+      "id": "types-3",
+      "file": "dazzle_claude_config/_vendor/ailib/types.py",
+      "original": "    stream_to: TextIO | None = None\n    workdir: str = \"\"",
+      "mutated": "    stream_to: TextIO | None = None\n    workdir: str = \".\"",
+      "note": "Changed Request.workdir's default from \"\" to \".\", so every Request that doesn't explicitly pass workdir now looks like it named a working directory, enabling the {tools} grant and cwd override paths that are supposed to require an explicit opt-in."
+    },
+    {
+      "id": "types-4",
+      "file": "dazzle_claude_config/_vendor/ailib/types.py",
+      "original": "        payload = json.dumps({\"prompt\": self.prompt, \"schema\": self.schema,\n                              \"max_tokens\": self.max_tokens, \"temperature\": self.temperature},\n                             sort_keys=True, default=str)",
+      "mutated": "        payload = json.dumps({\"prompt\": self.prompt, \"schema\": self.schema,\n                              \"max_tokens\": self.max_tokens, \"temperature\": self.temperature,\n                              \"workdir\": self.workdir},\n                             sort_keys=True, default=str)",
+      "note": "Added workdir into the fingerprint payload, directly contradicting the docstring's explicit requirement that \"the fingerprint excludes it too\" -- two requests differing only in workdir would now hash differently."
+    },
+    {
+      "id": "types-5",
+      "file": "dazzle_claude_config/_vendor/ailib/types.py",
+      "original": "\"max_tokens\": self.max_tokens, \"temperature\": self.temperature},",
+      "mutated": "\"max_tokens\": self.max_tokens},",
+      "note": "Dropped temperature from the fingerprint payload dict, so two Requests that differ only in temperature now collide to the same fingerprint (a dropped-field/normalization-loss mutant on the cache-key surface)."
+    },
+    {
+      "id": "ailib-1",
+      "file": "dazzle_claude_config/ailib.py",
+      "original": "_CLAUDE_TOOLS = \"Read,Grep,Edit,Write\"",
+      "mutated": "_CLAUDE_TOOLS = \"Read,Grep\"",
+      "note": "Narrowed the claude tools grant to read-only-equivalent (Read,Grep), matching the docstring's own measured example of a grant that \"refuses to edit at all\" -- the deep merge's edit capability silently breaks for every claude/claude-strict preset."
+    },
+    {
+      "id": "ailib-2",
+      "file": "dazzle_claude_config/ailib.py",
+      "original": "_CODEX_TOOLS = \"workspace-write\"",
+      "mutated": "_CODEX_TOOLS = \"read-only\"",
+      "note": "Changed the codex sandbox grant from workspace-write to read-only, the exact mode the docstring says \"refuses to edit at all\" -- codex/codex-strict presets lose write capability inside their working directory."
+    },
+    {
+      "id": "ailib-3",
+      "file": "dazzle_claude_config/ailib.py",
+      "original": "    \"claude\": _Spec(\"cli\", name=\"claude\", model=CLAUDE_DEFAULT_MODEL,\n                    command=(\"claude\", \"--output-format\", \"text\", \"--model\", \"{model}\",\n                             \"--allowedTools\", \"{tools}\", \"-p\", \"-\"),\n                    tools=_CLAUDE_TOOLS,\n                    env_unset=_CLAUDE_ENV_UNSET, candidates=_CLAUDE_CANDIDATES, on_prem=False),",
+      "mutated": "    \"claude\": _Spec(\"cli\", name=\"claude\", model=CLAUDE_DEFAULT_MODEL,\n                    command=(\"claude\", \"--output-format\", \"text\", \"--model\", \"{model}\",\n                             \"--allowedTools\", \"{tools}\", \"-p\", \"-\"),\n                    env_unset=_CLAUDE_ENV_UNSET, candidates=_CLAUDE_CANDIDATES, on_prem=False),",
+      "note": "Dropped tools=_CLAUDE_TOOLS from the \"claude\" preset entirely, so Spec.tools defaults to \"\" -- the {tools} placeholder and its --allowedTools flag are always stripped from argv, even when the request names a working directory."
+    },
+    {
+      "id": "ailib-4",
+      "file": "dazzle_claude_config/ailib.py",
+      "original": "tools=_CLAUDE_TOOLS, answer=\"stdout-json:structured_output\",",
+      "mutated": "tools=\"Read,Grep\", answer=\"stdout-json:structured_output\",",
+      "note": "Replaced the claude-strict preset's tools grant with a narrower literal (Read,Grep), bypassing the shared _CLAUDE_TOOLS constant so this preset alone loses edit/write capability regardless of what _CLAUDE_TOOLS is set to."
+    },
+    {
+      "id": "ailib-5",
+      "file": "dazzle_claude_config/ailib.py",
+      "original": "command=(\"codex\", \"exec\", \"--skip-git-repo-check\", \"-s\", \"{tools}\", \"-m\", \"{model}\", \"-\"),",
+      "mutated": "command=(\"codex\", \"exec\", \"--skip-git-repo-check\", \"-s\", \"{model}\", \"-m\", \"{tools}\", \"-\"),",
+      "note": "Swapped {tools} and {model} between the -s and -m flags in the codex command template, so the sandbox mode string is passed as the model name and the model name is passed as the sandbox mode -- a swapped-arguments mutant."
+    }
+  ]
+}

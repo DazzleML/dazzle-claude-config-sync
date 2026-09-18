@@ -1,0 +1,92 @@
+{
+ "test_command": [
+  "python",
+  "-B",
+  "-m",
+  "pytest",
+  "-q",
+  "-p",
+  "no:cacheprovider",
+  "tests/test_backend_lmstudio.py",
+  "tests/test_vendored_ailib.py"
+ ],
+ "mutations": [
+  {
+   "id": "m1",
+   "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+   "original": "return bool(n and n > ROOMY_CONTEXT)",
+   "mutated": "return bool(n and n >= ROOMY_CONTEXT)",
+   "note": "boundary: equal to ROOMY_CONTEXT now counts as roomy"
+  },
+  {
+   "id": "m2",
+   "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+   "original": "if live is not None and _model not in live:",
+   "mutated": "if live and _model not in live:",
+   "note": "None-vs-truthiness: an explicitly EMPTY loaded list skips the guard -> the disk-load hazard"
+  },
+  {
+   "id": "m3",
+   "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+   "original": "if live is None and _model not in listed:",
+   "mutated": "if live is None or _model not in listed:",
+   "note": "and/or swap in the cannot-say branch"
+  },
+  {
+   "id": "m4",
+   "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+   "original": "return live[0], \"\"",
+   "mutated": "return live[-1], \"\"",
+   "note": "last loaded model instead of the first"
+  },
+  {
+   "id": "m6",
+   "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+   "original": "return bool(_target()[0])",
+   "mutated": "return bool(_target()[1])",
+   "note": "swapped tuple index: availability reads the reason, not the model"
+  },
+  {
+   "id": "m7",
+   "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+   "original": "and d.get(\"state\") == \"loaded\"]",
+   "mutated": "and d.get(\"state\") != \"loaded\"]",
+   "note": "loaded_models returns everything NOT loaded"
+  },
+  {
+   "id": "m8",
+   "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+   "original": "if isinstance(d, dict) and d.get(\"state\") == \"loaded\":",
+   "mutated": "if isinstance(d, dict) and d.get(\"state\") != \"loaded\":",
+   "note": "context_length reads an unloaded record"
+  },
+  {
+   "id": "m9",
+   "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+   "original": "n = d.get(\"loaded_context_length\") or d.get(\"max_context_length\")",
+   "mutated": "n = d.get(\"max_context_length\") or d.get(\"loaded_context_length\")",
+   "note": "prefers the static max over the window actually loaded"
+  },
+  {
+   "id": "m10",
+   "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+   "original": "root = _endpoint[:-3] if _endpoint.endswith(\"/v1\") else _endpoint",
+   "mutated": "root = _endpoint if _endpoint.endswith(\"/v1\") else _endpoint[:-3]",
+   "note": "swapped ternary: the native probe asks the wrong root"
+  },
+  {
+   "id": "m11",
+   "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+   "original": "    if not choices:\n        return False, f\"{_endpoint} answered with no choices\"",
+   "mutated": "    if choices:\n        return False, f\"{_endpoint} answered with no choices\"",
+   "note": "dropped negation on the no-choices guard"
+  },
+  {
+   "id": "m12",
+   "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+   "original": "if not text.strip():",
+   "mutated": "if not text:",
+   "note": "dropped normalization: whitespace-only content passes as an answer"
+  }
+ ]
+}

@@ -767,6 +767,66 @@ def _doctor(args) -> int:
         findings.append(("info", "injection driver: not applicable here (Windows-only); "
                                  "tools that regenerate their output pane keep resumed "
                                  "files closed on this platform"))
+    # the AI merge (0.5.21): the vendored library, the configured backend, and
+    # the setting that was documented for three minor versions and never read
+    try:
+        from . import ailib as _ailib
+        _names = _ailib.names()
+        _backend = str(cfg.get("ai_merge_backend") or _ailib.PROMPT_ONLY)
+        if _backend not in _names:
+            warn(f"ai_merge_backend is {_backend!r}, not one of {', '.join(_names)} -- "
+                 f"`ccs merge --ai` will refuse it")
+        elif _backend == _ailib.PROMPT_ONLY:
+            # the one comparison left: a MODE of the caller, not a backend
+            ok("ai merge: prompt-only (writes the prompt, sends nothing) -- set "
+               "ai_merge_backend or pass --ai <backend> to use one")
+        else:
+            # Doctor does not know what kind of thing the backend is. It
+            # builds it from the preset and the person's overrides, asks it
+            # whether it is ready, and prints what it says -- a CLI says
+            # whether its executable was found, a server says what is loaded
+            # and how big its window is, a hosted provider says which
+            # variable and which files it looked in for its key, and where
+            # it found one -- the same route a merge takes, because both
+            # go through spec_for with the same overrides.
+            _spec = _ailib.spec_for(_backend, endpoint=cfg.get("ai_merge_endpoint"),
+                                    model=cfg.get("ai_merge_model"),
+                                    api_key_env=cfg.get("ai_merge_api_key_env"),
+                                    api_key_file=cfg.get("ai_merge_api_key_file"),
+                                    keys_dir=_ailib.keys_dir(user_claude))
+            _b = _ailib.build(_spec)
+            _ready = _b.probe()
+            _caps = _b.capabilities
+            _where = ("your text stays on your network" if "data_stays_on_prem" in _caps
+                      else "your text goes to a hosted model")
+            # The deep step (#64) reaches neighbours and project only with
+            # tools; say here which this backend is, so a person learns it
+            # before a run refuses a scope.
+            _tools = (f"tools: {getattr(_spec, 'tools', '') or 'granted'} (the deep step may reach "
+                      f"neighbours and project)" if "tools" in _caps
+                      else "no tools: the deep step reaches file, not neighbours")
+            if _ready.ok:
+                ok(f"ai merge backend {_backend}: {_ready.reason} -- {_where}; {_tools}")
+                if _ready.warning:
+                    warn(f"ai merge backend {_backend}: {_ready.warning}")
+            else:
+                warn(f"ai merge backend {_backend}: {_ready.reason} -- `ccs merge --ai` will "
+                     f"say so; prompt-only always works")
+            # Inside the try ON PURPOSE: everything above is bound only when
+            # the import succeeded, and this once sat below the except -- so
+            # the one configuration where the person most needed a sentence
+            # (library broken, model set) got a NameError.
+            _m = cfg.get("ai_merge_model")
+            if _m and "model" not in _caps:
+                warn(f"ai_merge_model is {_m!r} but the {_backend} backend cannot be told which "
+                     f"model to use -- it would be ignored")
+    except Exception as e:                       # the vendored copy missing or broken
+        warn(f"ai merge library: {e} -- the vendored copy under _vendor/ailib is missing "
+             f"or broken; even prompt-only cannot run")
+    if cfg.get("ai_merge_command"):
+        warn("ai_merge_command is set but no longer read -- the AI merge is configured "
+             "with ai_merge_backend (see docs/ai-merge.md); the key was documented since "
+             "0.3.0 and never implemented")
     # manifest + seeds
     manifest = None
     if co.is_dir():
@@ -1007,6 +1067,39 @@ day to day, once it is installed:
                             help="with --relaunch: reopen WITHOUT restoring your "
                                  "edits -- the tool regenerates its output and "
                                  "your prior work in that file is discarded")
+            sp.add_argument("--ai", nargs="?", const="auto", default=None, metavar="BACKEND",
+                            help="ask a model to resolve the conflict-hunks (the regions both sides "
+                                 "changed), under the rules you wrote (~/claude/ccs-merge-rules/); "
+                                 "the proposal lands in <file>.merged-ai beside yours and "
+                                 "installs nothing. BACKEND is a preset: claude or codex "
+                                 "(the CLIs), lmstudio or ollama (a server on this machine "
+                                 "-- nothing leaves your network), openai or openrouter (a "
+                                 "hosted provider, keyed by the environment variable the "
+                                 "preset names), or prompt-only (writes the prompt for you "
+                                 "to carry anywhere; the default unless ai_merge_backend is "
+                                 "set). `ccs doctor` says what the configured one is ready to do")
+            sp.add_argument("--ai-response", default=None, metavar="FILE",
+                            help="with --ai: apply an answer you carried back (one JSON "
+                                 "block, as the prompt asks) instead of calling a backend")
+            sp.add_argument("--ai-refresh", action="store_true",
+                            help="with --ai: ask the backend again even if the same "
+                                 "inputs were answered before (the answer is cached)")
+            sp.add_argument("--ai-verbose", action="store_true",
+                            help="with --ai: stream the backend's output as it arrives")
+            sp.add_argument("--ai-idle", type=int, default=None, metavar="SECONDS",
+                            help="with --ai: how long a backend may be silent before it is "
+                                 "declared dead and stopped (default: ai_merge_idle, 180). A call "
+                                 "runs while it is alive -- a thinking model is not silent")
+            sp.add_argument("--ai-timeout", type=int, default=None, metavar="SECONDS",
+                            help="with --ai: a hard ceiling on one call, for a machine with nobody "
+                                 "watching (default: ai_merge_timeout, 0 = none)")
+            sp.add_argument("--ai-scope", default="hunk", choices=("hunk", "file", "neighbours", "project"),
+                            help="with --ai ...,deep: how far the deep step may edit -- hunk "
+                                 "(the changed regions and their surrounding code; default), "
+                                 "file (this file only), neighbours (this file and its "
+                                 "neighbouring files), project (anything under the checkout or "
+                                 "this component). An answer that reached further is not kept; "
+                                 "the edits it would have made are shown")
         if verb in ("merge", "diff"):
             sp.add_argument("--base-file", default=None, metavar="FILE",
                             help="use FILE as the common ancestor instead of "
@@ -1046,6 +1139,12 @@ day to day, once it is installed:
             sp.add_argument("path", nargs="?", default=None,
                             help="show the actual line-by-line difference for one "
                                  "file (default: list which files differ)")
+            sp.add_argument("--ai", action="store_true",
+                            help="with a path: open the AI's proposal (<file>.merged-ai) "
+                                 "beside your result (<file>.merged) in your diff tool")
+            sp.add_argument("--variant", type=int, default=None, metavar="N",
+                            help="with --ai: open the AI's answer N (<file>.merged-ai.N -- a "
+                                 "deep step's variant) instead of the first")
             sp.add_argument("--difftool", nargs="?", const=2, type=int, choices=(2, 3),
                             default=None, metavar="{2,3}",
                             help="open the file in your diff tool instead of printing: "
@@ -1269,7 +1368,7 @@ def _classify(checkout, d, rel):
     repo_path = f"{d.entry.repo}/{rel}" if rel else d.entry.repo
     lv = d.live_base / rel if rel else d.live_base
     import subprocess
-    shown = subprocess.run(["git", "show", f"HEAD:{repo_path}"],
+    shown = subprocess.run(["git", "show", f"HEAD:{repo_path}", "--"],
                            cwd=str(checkout), capture_output=True)
     # Only the return code answers "is this path in HEAD?". An empty file
     # that IS committed resolves fine with empty output, and treating that
@@ -1514,6 +1613,319 @@ def _launch_file_difftool(all_diffs, wanted: str, tool: str | None, *, supplied=
     return EXIT_CLEAN if same else EXIT_DRIFT
 
 
+def _launch_ai_diff(all_diffs, wanted: str, tool: str | None, *, checkout, roots,
+                    manifest, box_tags=frozenset(), variant: int | None = None) -> int:
+    """`ccs diff <path> --ai [--variant N]`: the AI's proposal -- or its
+    answer N, a deep step's variant -- beside the person's result, in the
+    two-pane tool. With two files on disk the person must be able to SEE
+    what differs before `--accept` installs theirs -- and it installs
+    theirs, never the proposal."""
+    from . import airecord
+    want = wanted.replace(chr(92), "/").strip("/")
+    try:
+        found = _resolve_pair(all_diffs, want, manifest=manifest, checkout=checkout,
+                              roots=roots, box_tags=box_tags)
+    except AmbiguousPath as e:
+        _print_ambiguous(e)
+        return EXIT_ERROR
+    if found is None:
+        print(c("yellow", f"no file matches {wanted!r}")
+              + c("dim", " -- run `ccs diff` with no argument to list what differs"))
+        return EXIT_CLEAN
+    lv, rp, target, repo_label = found
+    ws = merge.workspace_for(roots)
+    merged = ws / (target.replace("/", "__").replace(chr(92), "__") + ".merged")
+    proposal = airecord.proposal_path(merged, variant or 0)
+    if not proposal.is_file():
+        if variant:
+            print(c("yellow", f"no AI answer {variant} for {target}")
+                  + c("dim", f" -- the record beside {merged.name} lists the answers; "
+                             f"ccs diff {target} --ai opens the first"))
+        else:
+            print(c("yellow", f"no AI proposal for {target}")
+                  + c("dim", f" -- ccs merge {target} --ai writes one beside your result"))
+        return EXIT_CLEAN
+    yours = merged if merged.is_file() else lv
+    name = merge.resolve_difftool(tool)
+    merge.launch_difftool(name, proposal, yours)
+    whose = merged.name if merged.is_file() else f"live/{target}"
+    print(c("dim", f"opened {name}: the AI's proposal ({proposal.name}) vs yours ({whose}); "
+                   f"--accept installs yours, never the proposal"))
+    return EXIT_CLEAN
+
+
+def parse_plan(token: str, *, configured: str) -> list:
+    """`--ai <step>[,<step>...]` as a list of `aistep.AiStep` (U5, #64).
+
+    `auto` (the bare flag) is the recipe on the configured backend. A
+    preset name is the recipe on it. `deep` is the deep step on the
+    configured backend, `deep:<preset>` on that one -- and a deep step with
+    no recipe before it inserts one on the same backend, because the deep
+    step reads the recipe's result (or git's clean merge) for meaning:
+    `claude,deep` is the recipe first, its result to the deep step, the
+    maintainer's reading confirmed at the design gate. prompt-only can be
+    a recipe step but never a deep one (it cannot read a file). One recipe
+    step per plan: two line-selection answers (`--ai a,b`, #58) are not
+    built yet. Raises ValueError with the sentence to print."""
+    from . import ailib, aistep
+    names = ailib.names()
+    if token == "auto":
+        return [aistep.AiStep("recipe", configured)]
+    steps: list = []
+    for raw in token.split(","):
+        part = raw.strip()
+        if not part:
+            raise ValueError(f"empty step in --ai {token!r}")
+        if "@" in part or "/" in part:
+            # Reserved (the latitude design of 2026-09-15, move N1): a later
+            # syntax may spell a step's own latitude as `deep@file/minimal`.
+            # Refusing the characters by name today means no plan in anyone's
+            # config comes to depend on them meaning something else.
+            raise ValueError(f"{part!r}: '@' and '/' in a step are reserved for a later per-step latitude "
+                             f"syntax; today's spelling is --ai <preset>,deep --ai-scope <rung>")
+        if part == "deep" or part.startswith("deep:"):
+            recipe = next((s.backend for s in steps if s.kind == "recipe"), None)
+            # a bare `deep` runs on the recipe's backend when one came before
+            # it (`claude,deep` is one backend, two passes), else on the
+            # configured one
+            backend = part[len("deep:"):] if part.startswith("deep:") else (recipe or configured)
+            if backend == aistep.PROMPT_ONLY:
+                raise ValueError("deep needs a backend: deep:<preset> on the command line, or "
+                                 "ai_merge_backend in your config -- prompt-only writes a prompt and "
+                                 "cannot read a file for meaning")
+            if backend not in names:
+                raise ValueError(f"unknown AI backend {backend!r} -- one of: {', '.join(names)}")
+            if not any(s.kind == "recipe" for s in steps):
+                steps.append(aistep.AiStep("recipe", backend))
+            steps.append(aistep.AiStep("deep", backend))
+            continue
+        if part not in names:
+            raise ValueError(f"unknown AI backend {part!r} -- one of: {', '.join(names)}")
+        if any(s.kind == "recipe" for s in steps):
+            raise ValueError("one recipe step per plan -- two line-selection answers (--ai a,b) are not "
+                             "built yet; --ai a,deep is")
+        steps.append(aistep.AiStep("recipe", part))
+    return steps
+
+
+def _ai_options(args, roots):
+    """The `--ai` flags and the config key, as one object for merge.run --
+    or None after printing why not."""
+    from . import ailib, airules, airung, aistep, merge
+    cfg = userconfig.load(roots["USER_CLAUDE"])
+    configured = cfg.get("ai_merge_backend") or aistep.PROMPT_ONLY
+    try:
+        steps = parse_plan(args.ai, configured=configured)
+    except ValueError as e:
+        print(c("red", str(e)))
+        return None
+    scope = airung.rung_of(getattr(args, "ai_scope", None) or "hunk")
+    if any(s.kind == "deep" for s in steps):
+        # The plan, before the first call: what runs, in what order, and how
+        # far the deep step may reach.
+        print(c("dim", "steps: " + ", ".join(f"{s.backend} (recipe)" if s.kind == "recipe"
+                                             else f"deep via {s.backend}" for s in steps)
+                       + f" -- scope {airung.token_of(scope)}"))
+    user = roots["USER_CLAUDE"]
+    return aistep.AiOptions(
+        rules_dir=airules.rules_dir(user), prompts_dir=airules.prompts_dir(user),
+        # `steps` is authoritative: each names its own backend, and `merge.run`
+        # hands every step options carrying that backend. `backend` here is the
+        # pre-plan fallback (`AiOptions.plan()` for a caller that built no
+        # steps), kept as the FIRST step's so the two can never disagree.
+        cache_dir=user / "cache" / "ccs-ai", backend=steps[0].backend,
+        steps=tuple(steps), scope=scope,
+        refresh=bool(getattr(args, "ai_refresh", False)),
+        verbose=bool(getattr(args, "ai_verbose", False)),
+        response=pathlib.Path(args.ai_response) if getattr(args, "ai_response", None) else None,
+        endpoint=cfg.get("ai_merge_endpoint") or None,
+        model=cfg.get("ai_merge_model") or None,
+        api_key_env=cfg.get("ai_merge_api_key_env") or None,
+        api_key_file=cfg.get("ai_merge_api_key_file") or None,
+        keys_dir=ailib.keys_dir(user),
+        # Run while alive (v0.6.10): the flag wins over the key. `load()`
+        # applies every key's default, so the keys are always present here
+        # (the audit found a fallback literal that could never run); the
+        # progress line only where a person can see it.
+        idle=int(args.ai_idle if getattr(args, "ai_idle", None) is not None else cfg.get("ai_merge_idle", 180)),
+        timeout=int(args.ai_timeout if getattr(args, "ai_timeout", None) is not None
+                    else cfg.get("ai_merge_timeout", 0)),
+        max_turns=int(cfg.get("ai_merge_max_turns", 40)),
+        progress=merge.interactive())
+
+
+def _n_lines(n: int) -> str:
+    return f"{n} line{'' if n == 1 else 's'}"
+
+
+def _ai_counts(out) -> str:
+    """The classification counts, first under the headline (#19, criterion
+    1): how much of the file the model was given, and how much it never saw.
+    git's diff3 did the classifying; the model only ever sees the
+    conflict-hunks (regions both sides changed); the diff-hunks (regions one
+    side changed) git took on its own, and the recipe never sends them."""
+    h = out.hunks
+    return (f"    conflict-hunks: {h} -- the model's; "
+            f"{out.clean_lines} line{'s' if out.clean_lines != 1 else ''} in diff-hunks git took on its own, never sent")
+
+
+def _print_ai_report(r, args) -> None:
+    """The `--ai` lines of the merge report, in #54's vocabulary: staged,
+    never merged, for anything not installed; and every claim about the
+    proposal read from its record."""
+    for item in r.ai_no_base:
+        pass  # printed with the other refusals (item.reason carries the sentence)
+    for item, out in r.ai:
+        label = item.label
+        if out.status == "no-hunks":
+            # The founding case of the deep merge (#64): a clean merge is not a
+            # resolved one -- the diff-hunks were taken one at a time and never
+            # read together. Say so, and name the step that reads them, unless
+            # this plan already ran it (its own line follows).
+            deep_ran = any(i.label == label and getattr(o, "kind", "recipe") == "deep" for i, o in r.ai)
+            nudge = "" if deep_ran else " -- add ,deep to read them together"
+            print(c("dim", f"ai  {label} -- no conflict-hunk; git took the diff-hunks on its own, "
+                           f"nothing for the recipe to decide{nudge}"))
+        elif out.status == "prompt-written":
+            print(f"{c('cyan', 'prompt written')} {label} {c('dim', '-- ' + str(out.prompt_path))}")
+            print(c("dim", _ai_counts(out)))
+            print(c("dim", "    answer it as one JSON block into ") + c("bold", str(out.response_path))
+                  + c("dim", f" (or pass --ai-response FILE), then re-run ")
+                  + c("bold", f"ccs merge {label} --ai"))
+            for line in out.reports:
+                print("    " + c("magenta", line))
+        elif out.status == "proposed":
+            how = out.backend + (", cached" if out.cached else "")
+            print(f"{c('green', 'staged')} {label} "
+                  + c("dim", f"-- the AI's proposal ({how}) at {out.proposal}; "
+                             f"validation passed; nothing installed"))
+            print(c("dim", _ai_counts(out)))
+            print(c("dim", f"    {out.rules}"))
+            if getattr(out, "backend_identity", ""):
+                # who actually answered, and what the request could make it
+                # honour -- the line the witnessed runs are read by
+                _who = out.model_used or "(model not reported)"
+                _held = ", ".join(out.honoured) if out.honoured else "nothing enforced"
+                print(c("dim", f"    answered by {_who} via {out.backend_identity}; {_held}"))
+            # C7 (#64): every answer says what protects it. The recipe's
+            # protections are structural; the deep step's line, below, is
+            # different on purpose.
+            print(c("dim", "    guarantees: every line came from one of the three sides (the check "
+                           "refused anything else); git's clean regions were never sent; your diff "
+                           "and --accept are the gate"))
+            if getattr(out, "warning", ""):
+                print(c("dim", f"    backend: {out.warning}"))         # #62: "yes, but" from the probe
+            for n, rules, why in out.rationales:
+                cite = f" [{', '.join(rules)}]" if rules else ""
+                print(c("dim", f"    hunk {n}: {why}{cite}"))
+            for line in out.reports:
+                print("    " + c("magenta", line))
+            # A drop is the one thing a rule can authorise, so it is the one
+            # thing the report must never let past in silence: the line that
+            # went, and the rule that let it.
+            for n, rules, gone in out.licensed:
+                for ln in gone:
+                    head = f"    hunk {n}: dropped under {', '.join(rules)} -- "
+                    shown, _ = render.fit(ln.strip(), indent=len(head))
+                    print(c("dim", head) + c("yellow", shown))
+            if item in r.ai_copied:
+                print(c("dim", "    copied into ") + c("bold", ".merged")
+                      + c("dim", " (you had no result of your own there); ")
+                      + c("bold", "--accept") + c("dim", " asks before installing it"))
+        elif out.status == "rejected":
+            print(f"{c('bold_red', 'NOT PROPOSED')} {label} "
+                  + c("dim", f"-- the answer failed the check ({out.backend})"))
+            for f in out.failures:
+                print("    " + c("red", f))
+            if out.proposal is not None and out.proposal.is_file():
+                print(c("dim", f"    the assembled file is at {out.proposal} for your eyes; "
+                               f"nothing was copied, nothing installed"))
+        elif out.status == "backend-failed":
+            # The first line of a backend's complaint is the part a person
+            # can act on; the rest is its own diagnostics and can run to
+            # hundreds of kilobytes (measured twice on one codex fault).
+            _first = (out.error or "").strip().splitlines()
+            _head, _cut = render.fit(_first[0] if _first else "(no message)",
+                                     indent=len(f"ai failed {label} -- "))
+            print(f"{c('red', 'ai failed')} {label} {c('dim', '-- ' + _head)}")
+            if (len(_first) > 1 or _cut) and getattr(out, "error_path", None):
+                print(c("dim", f"    the backend's full output: {out.error_path}"))
+            if getattr(out, "warning", ""):
+                # #62: a timeout is often the warning's prediction coming true
+                print(c("dim", f"    backend: {out.warning}"))
+        elif out.status == "deep-proposed":
+            # The deep step's answer: a numbered variant beside the others,
+            # with its own guarantees line (C7) -- never copied, never chosen.
+            from . import airung
+            name = out.variant.name if out.variant is not None else "(variant)"
+            print(f"{c('green', 'staged')} {label} "
+                  + c("dim", f"-- the AI's answer {name} (deep via {out.backend}; needed "
+                             f"{airung.token_of(out.scope_needed)}, "
+                             f"{airung.token_of(out.scope_allowed)} allowed); nothing installed"))
+            print(c("dim", f"    files touched: {len(out.touched)}"))
+            print(c("dim", f"    {out.guarantees}"))
+            if out.summary:
+                print(c("dim", f"    {out.summary}"))
+            for _path, region, rung, reason in out.edits:
+                print(c("dim", f"    {region or _path} (rung {rung}): {reason or '(no reason given)'}"))
+            for line in out.tripwire:
+                print("    " + c("yellow", f"tripwire: {line}"))
+            if out.warning:
+                print(c("dim", f"    backend: {out.warning}"))
+            print(c("dim", f"    ccs diff {label} --ai --variant {name.rsplit('.', 1)[-1]} opens it beside yours"))
+        elif out.status == "deep-empty":
+            print(c("dim", f"ai  {label} -- nothing to change (deep via {out.backend}): the merged file stands"))
+            if out.warning:
+                print(c("dim", f"    backend: {out.warning}"))
+            if getattr(out, "reply", None) is not None:
+                print(c("dim", f"    reply: {out.reply.name} -- why, in the model's words, kept beside your result"))
+        elif out.status in ("deep-failed", "deep-escaped"):
+            print(f"{c('bold_red', 'NOT KEPT')} {label} "
+                  + c("dim", f"-- {out.error} (deep via {out.backend})"))
+            for line in out.reports:
+                print("    " + c("yellow", line))
+            for e in out.escapes:
+                print("    " + c("red", f"changed outside the sandbox: {e}"))
+            if getattr(out, "reply", None) is not None:
+                print(c("dim", f"    reply: {out.reply.name} -- what the model answered, kept beside your result"))
+        elif out.status == "deep-skipped":
+            print(f"{c('yellow', 'ai skipped')} {label} "
+                  + c("dim", f"-- {out.error} (deep via {out.backend})"))
+    for item in r.ai_unchanged:
+        if item in r.ai_copied:
+            continue                          # said above, on the proposal's own line
+        rec = r.ai_records[item.label]
+        when = (rec.created or "")[:10]
+        stale = r.ai_stale.get(item.label)
+        if stale:
+            moved = " and ".join(stale)
+            print(f"{c('yellow', 'staged')} {item.label} "
+                  + c("dim", f"-- the AI's proposal from {when}; {moved} ")
+                  + c("yellow", "has changed since")
+                  + c("dim", f" -- re-run ccs merge {item.label} --ai; nothing installed"))
+        else:
+            print(f"{c('cyan', 'staged')} {item.label} "
+                  + c("dim", f"-- the AI's proposal, unchanged since {when}; nothing installed"))
+    for item, n in r.ai_edited:
+        print(f"{c('cyan', 'staged')} {item.label} "
+              + c("dim", f"-- yours; differs from the AI's proposal ({_n_lines(n)}); nothing installed"))
+        print("    " + c("bold", f"ccs diff {item.label} --ai") + c("dim", " opens them side by side; ")
+              + c("bold", "--accept installs YOURS") + c("dim", ", not the proposal"))
+    for item, lines in getattr(r, "ai_tripwire", []):
+        # C8 (#64): the checks a deep variant is NOT gated by, said out loud.
+        # Recorded and printed, never a refusal -- a deep answer may hold text
+        # neither side wrote, which is what these checks look for.
+        print(f"{c('yellow', 'tripwire')} {item.label} "
+              + c("dim", "-- this result is the AI's and may contain text no side wrote, so these "
+                         "checks did not refuse it:"))
+        for ln in lines:
+            print("    " + c("yellow", ln))
+    for item in r.ai_declined:
+        print(f"{c('yellow', 'not installed')} {item.label} "
+              + c("dim", "-- the AI's proposal was not confirmed as reviewed; "
+                         f"open it (ccs diff {item.label} --ai) and --accept again"))
+
+
 def _launch_three_way(lv, rp, target, repo_label, tool, checkout, roots, repo,
                       supplied=None) -> int:
     """live | base | checkout in the user's mergetool, read-only.
@@ -1532,7 +1944,7 @@ def _launch_three_way(lv, rp, target, repo_label, tool, checkout, roots, repo,
                else "one side is absent, so there is no history to attribute against")
         print(c("yellow", f"no base possible -- {why}; opening the two-way view"))
         return _two_way_fallback(lv, rp, target, repo_label, tool)
-    shown = subprocess.run(["git", "show", f"HEAD:{repo_label}"], cwd=str(checkout),
+    shown = subprocess.run(["git", "show", f"HEAD:{repo_label}", "--"], cwd=str(checkout),
                            capture_output=True)
     theirs = shown.stdout if shown.returncode == 0 else b""
     if supplied is not None and supplied[0] is not None:
@@ -1809,6 +2221,44 @@ def _print_no_such_file(manifest, box, wanted: str, want: str) -> None:
         print(c("red", f"no such file in any manifest entry: {wanted!r}")
               + c("dim", " -- run `ccs diff` with no argument to list what differs"),
               file=sys.stderr)
+
+
+def _other_side_path(label: str, manifest, roots) -> pathlib.Path | None:
+    """Where a repo-side label WOULD live, if its territory is known.
+
+    Only called when the label matched no manifest entry, to answer the one
+    question the tool is in a position to answer and does not: is this thing
+    over on the other side? `apply` and `collect` are the same operation in
+    opposite directions, and naming the wrong one is the easiest mistake
+    here -- "there is nothing to do" and "you asked the wrong verb" deserve
+    different sentences.
+    """
+    if manifest is None or not label:
+        return None
+    parts = label.replace("\\", "/").strip("/").split("/", 1)
+    if len(parts) != 2:
+        return None
+    repo_dir, rest = parts
+    for t in (manifest.territories or {}).values():
+        if t.get("repo_dir") == repo_dir:
+            root = roots.get(t.get("root_var"))
+            if root is not None:
+                p = pathlib.Path(root) / rest
+                return p if p.exists() else None
+    return None
+
+
+def _nothing_matched_line(args, manifest, roots, other_verb: str) -> str:
+    """The summary for a filter that matched nothing -- which is NOT the same
+    outcome as "the two sides agree", and must not borrow its reassurance."""
+    what = args.only if getattr(args, "only", None) else getattr(args, "path", None)
+    msg = (f" -- --only {what!r} matched no manifest entry, so nothing was compared"
+           if getattr(args, "only", None) else
+           f" -- {what!r} matched no manifest entry, so nothing was compared")
+    where = _other_side_path(what, manifest, roots)
+    if where is not None:
+        msg += f"; that path DOES exist at {where} -- did you mean `ccs {other_verb}`?"
+    return msg
 
 
 def _warn_only_miss(args, manifest, box) -> None:
@@ -2388,6 +2838,11 @@ def main(argv: list[str] | None = None) -> int:
                 # lines in a non-triple-quoted f-string before 3.12 (PEP 701).
                 detail = f"-- looks like a credential (line {hit.line_no}: {hit.excerpt})"
                 print(f"{c('bold_red', 'REFUSED')} {hit.rel_path} {c('red', detail)}")
+            for rel in r.allowed_secrets:
+                # The path only, never a line of the file: the whole point of the
+                # entry's allowance is that this file holds a credential.
+                print(f"{c('yellow', 'allowed')} {rel} "
+                      f"{c('dim', '-- allow_secrets on this entry: not scanned for credentials')}")
             for rel in r.copied:
                 verb = "would copy" if args.dry_run else "copied"
                 print(f"{c('green', verb)}: {rel}")
@@ -2432,8 +2887,12 @@ def main(argv: list[str] | None = None) -> int:
                                "ccs-manifest.json's collect_exclude"))
             if not r.copied and not r.refusals:
                 held = bool(r.refused_uncommitted or r.skipped)
+                missed = bool(getattr(r, "only_matched", None) == 0
+                              and getattr(args, "only", None))
                 print(c("green", "collect: nothing to do") +
-                      (" -- nothing was collected; see the lines above for what "
+                      (_nothing_matched_line(args, manifest, roots, "apply")
+                       if missed else
+                       " -- nothing was collected; see the lines above for what "
                        "was held back"
                        if held else
                        " -- the checkout already has everything from your live config"))
@@ -2639,8 +3098,18 @@ def main(argv: list[str] | None = None) -> int:
                 # directly beneath the FAILED line naming the file.
                 held = bool(wrong_dir or r.removals_pending or r.removals_kept
                             or r.mismatched or r.failed or r.held_deleted)
+                # THREE outcomes, not two. A filter that matched nothing
+                # compared nothing, so "already matches" is not a summary of
+                # anything -- and it is the most reassuring sentence
+                # available, printed directly under a warning saying the
+                # opposite. Seen on a real run whose CCS_CHECKOUT_DIR still
+                # pointed at a scratch world (#56).
+                missed = bool(getattr(r, "only_matched", None) == 0
+                              and getattr(args, "only", None))
                 print(c("green", "apply: nothing to do") +
-                      (" -- nothing was applied; see the skipped and pending "
+                      (_nothing_matched_line(args, manifest, roots, "collect")
+                       if missed else
+                       " -- nothing was applied; see the skipped and pending "
                        "lines above for what differs"
                        if held else
                        " -- your live config already matches the checkout"))
@@ -2656,6 +3125,11 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.verb == "merge":
             blob, label = _supplied_base(args)
+            ai_opts = None
+            if args.ai is not None:
+                ai_opts = _ai_options(args, roots)
+                if ai_opts is None:
+                    return EXIT_ERROR
             r = merge.run(manifest, checkout, roots, tool=args.tool,
                           box_tags=box.tags, repo=repo,
                           dry_run=args.dry_run, accept=args.accept, only=args.only,
@@ -2665,7 +3139,7 @@ def main(argv: list[str] | None = None) -> int:
                                           .get("merge_inject", "ask")),
                           preview=args.preview, base_mode=args.base,
                           base_override=blob, base_label=label,
-                          cod_ratio=args.block_swap_ratio)
+                          cod_ratio=args.block_swap_ratio, ai=ai_opts)
             for item in (i for i in r.resolved + r.previewed + [i for i, _ in r.unresolved]
                          if i.base_supplied and i.cod is not None):
                 st = item.cod
@@ -2721,6 +3195,7 @@ def main(argv: list[str] | None = None) -> int:
                       + c("dim", "-- the tool saved over your unverified edits; ccs put them back"))
             for why in r.registry_errors:
                 print(c("yellow", f"merge-tools.json (yours): {why} -- ignored; the packaged table stands"))
+            _print_ai_report(r, args)
             held = [i for i in r.resumed if i not in r.reopened and i not in r.injected
                     and i not in r.discarded and all(i is not j for j, _ in r.inject_refused)]
             if held and not args.no_launch and not args.relaunch:
@@ -2801,11 +3276,10 @@ def main(argv: list[str] | None = None) -> int:
                 # then the paid one.
                 for h in merge.resolution_hints(item):
                     print("    " + c("yellow", "hint") + " " + c("dim", h))
-                print("    " + c("dim", "still stuck? ") + c("bold", "--ai") +
-                      c("dim", " proposes a resolution you review in the same "
-                               "3-way view (set ai_merge_command in "
-                               "~/claude/ccs-config.json; a local model works "
-                               "and costs nothing)"))
+                print("    " + c("dim", "still stuck? ") + c("bold", f"ccs merge {item.label} --ai") +
+                      c("dim", " proposes a resolution under rules you write "
+                               "(~/claude/ccs-merge-rules/), beside your file, and "
+                               "installs nothing; prompt-only needs no backend"))
             if r.backup_dir:
                 print(c("dim", f"originals backed up: {r.backup_dir}"))
             if r.workspace:
@@ -2813,14 +3287,18 @@ def main(argv: list[str] | None = None) -> int:
             # r.previewed counts: a preview resolves nothing by design, so
             # reporting "nothing to do" right after listing a previewed file
             # contradicts the line printed immediately above it.
-            if not (r.refused or r.planned or r.resolved
-                    or r.unresolved or r.previewed):
+            if not (r.refused or r.planned or r.resolved or r.unresolved or r.previewed
+                    or r.ai or r.ai_unchanged or r.ai_edited or r.ai_declined or r.ai_pending):
                 print(c("green", "merge: nothing to do")
                       + " -- no file differs on both sides")
             # Validation failure is the alarm this whole verb exists for: a
             # tool exiting 0 is NOT evidence the merge kept both sides.
             if r.unresolved:
                 return merge.EXIT_VALIDATION
+            if r.ai_no_base and not r.resolved:
+                return merge.EXIT_NO_BASE
+            if r.ai_pending or r.ai_declined:
+                return EXIT_DRIFT                 # a prompt to answer, or a no
             return EXIT_DRIFT if r.refused else EXIT_CLEAN
 
         # status / diff
@@ -2844,6 +3322,10 @@ def main(argv: list[str] | None = None) -> int:
             # "merged and installed" is a claim; this is how you check it.
             wanted = getattr(args, "path", None)
             if wanted:
+                if getattr(args, "ai", False):
+                    return _launch_ai_diff(all_diffs, wanted, getattr(args, "tool", None),
+                                           checkout=checkout, roots=roots, manifest=manifest,
+                                           box_tags=box.tags, variant=getattr(args, "variant", None))
                 ways = getattr(args, 'difftool', None)
                 if ways:
                     return _launch_file_difftool(all_diffs, wanted,

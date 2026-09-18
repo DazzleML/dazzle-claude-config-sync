@@ -441,8 +441,12 @@ def test_at_a_console_the_bare_form_is_an_INDEX_not_an_80_line_dump(
     out = capsys.readouterr().out
 
     assert rc == 0
-    assert len(out.splitlines()) < 25, (
-        f"the index should fit on a screen, got {len(out.splitlines())} lines")
+    # One line per setting plus a few of framing: the bound follows the
+    # table, so a new setting does not fail this on arrival (v0.6.10 added
+    # three and the fixed 25 broke at 26), while an 80-line dump still does.
+    assert len(out.splitlines()) < len(userconfig.KEYS) + 8, (
+        f"the index should fit on a screen, got {len(out.splitlines())} lines "
+        f"for {len(userconfig.KEYS)} settings")
     for name in userconfig.KEYS:
         assert name in out, f"{name} missing from the index"
     assert userconfig.DOCS_URL in out, "the index must name the full reference"

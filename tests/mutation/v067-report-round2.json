@@ -1,0 +1,63 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "-x",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_ai_plan.py",
+      "tests/test_merge_ai.py",
+      "tests/test_doctor_ai.py",
+      "tests/test_aistep.py"
+    ],
+    "timestamp": "2026-09-15T17:24:23-04:00"
+  },
+  "results": [
+    {
+      "id": "M2",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "empty-step guard neutered: a split token is never None, so an empty step (e.g. --ai ',deep' or 'x,,deep') passes through instead of being refused.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M3",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "wrong string in the refusal sentence: the corrective spelling it offers names <file> instead of <rung>, misdirecting the person to a spelling that does not exist.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "boundary flip in the plural: zero clean lines now prints '0 line' instead of '0 lines'.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M10",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "default --ai-scope rung raised from 1 to 2: a plan that never passed --ai-scope now lets the deep step reach neighbours by default instead of stopping at the file.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 4
+  },
+  "anomalies": []
+}

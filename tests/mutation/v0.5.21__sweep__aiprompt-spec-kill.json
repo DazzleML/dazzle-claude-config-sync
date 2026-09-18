@@ -1,0 +1,12 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_aiprompt.py"],
+  "mutations": [
+    {"id": "M3", "file": "dazzle_claude_config/aiprompt.py", "original": "            if s and s in seen:\n                failures.append(f\"{PROPOSAL_PREFIX} hunk {h.n}: {_excerpt(s)!r} is selected twice\")\n                break", "mutated": "            if s and s in seen:\n                failures.append(f\"{PROPOSAL_PREFIX} hunk {h.n}: {_excerpt(s)!r} is selected twice\")", "note": "re-run after test_one_failure_per_hunk_for_duplicates"},
+    {"id": "M4", "file": "dazzle_claude_config/aiprompt.py", "original": "        seen: set[str] = set()\n        for t in selected_lines:\n            s = t.strip()", "mutated": "        seen: set[str] = set()\n        for t in selected_lines:\n            s = t", "note": "re-run after test_duplicates_differing_only_in_indentation_are_duplicates"},
+    {"id": "M6", "file": "dazzle_claude_config/aiprompt.py", "original": "        for prefix in (\"O\", \"B\", \"T\"):", "mutated": "        for prefix in (\"O\", \"T\"):", "note": "re-run after test_the_base_pane_keeps_its_order_too"},
+    {"id": "M8", "file": "dazzle_claude_config/aiprompt.py", "original": "        for prefix, pane in ((\"O\", h.ours), (\"T\", h.theirs)):", "mutated": "        for prefix, pane in ((\"O\", h.ours),):", "note": "re-run after test_a_dropped_payload_line_fails_like_a_dropped_live_one"},
+    {"id": "M13", "file": "dazzle_claude_config/aiprompt.py", "original": "    return any(difflib.SequenceMatcher(None, text, s).ratio() >= SUPERSEDE_RATIO", "mutated": "    return any(difflib.SequenceMatcher(None, text, s).ratio() > SUPERSEDE_RATIO", "note": "re-run after test_a_rewrite_at_exactly_the_threshold_needs_no_rule"},
+    {"id": "M14", "file": "dazzle_claude_config/aiprompt.py", "original": "        if not isinstance(n, int) or isinstance(n, bool):", "mutated": "        if not isinstance(n, int):", "note": "re-run after test_parse_response_rejects_a_boolean_hunk_number"},
+    {"id": "M15", "file": "dazzle_claude_config/aiprompt.py", "original": "        if n in choices:\n            failures.append(f\"{PROPOSAL_PREFIX} hunk {n} is answered twice\")\n            continue", "mutated": "        if n in choices:\n            failures.append(f\"{PROPOSAL_PREFIX} hunk {n} is answered twice\")", "note": "re-run after test_parse_response_keeps_the_first_answer_when_a_hunk_is_answered_twice"}
+  ]
+}

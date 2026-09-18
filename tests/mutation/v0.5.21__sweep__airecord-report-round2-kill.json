@@ -1,0 +1,68 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_airecord.py"
+    ],
+    "timestamp": "2026-09-03T21:36:03-04:00"
+  },
+  "results": [
+    {
+      "id": "N2",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "re-run after test_a_loaded_record_keeps_its_original_timestamp",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N4",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "re-run after test_new_record_copies_the_failures_list",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N6",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "re-run after test_load_tolerates_an_unknown_key_and_a_bom",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N7",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "re-run after test_load_tolerates_an_unknown_key_and_a_bom",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "N8",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "re-run after test_write_overwrites_an_existing_record_and_ends_with_a_newline",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 5
+  },
+  "anomalies": []
+}

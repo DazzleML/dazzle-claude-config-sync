@@ -1,0 +1,12 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_doctor_ai.py"],
+  "generation": "mode 1 -- fresh-context subagent, the doctor block pasted inline, zero tools (2026-09-05, U3 of the AI seam rebuild)",
+  "mutations": [
+    {"id": "d1", "file": "dazzle_claude_config/cli.py", "original": "if _backend not in _names:", "mutated": "if _backend in _names:", "note": "Inverts the unknown-backend guard: a misspelled ai_merge_backend passes silently into the mode/backend branches while every valid name is reported as not one of the names"},
+    {"id": "d2", "file": "dazzle_claude_config/cli.py", "original": "elif _backend == _ailib.PROMPT_ONLY:", "mutated": "elif _backend != _ailib.PROMPT_ONLY:", "note": "Prompt-only stops being a mode: a real backend prints the prompt-only sentence and is never built or probed, while prompt-only itself falls into the build/probe branch"},
+    {"id": "d3", "file": "dazzle_claude_config/cli.py", "original": "if \"data_stays_on_prem\" in _caps", "mutated": "if \"data_stays_on_prem\" not in _caps", "note": "Swaps the on-prem/hosted sentence"},
+    {"id": "d4", "file": "dazzle_claude_config/cli.py", "original": "if _ready.warning:\n                    warn(f\"ai merge backend {_backend}: {_ready.warning}\")", "mutated": "if not _ready.warning:\n                    warn(f\"ai merge backend {_backend}: {_ready.warning}\")", "note": "Breaks warning-only-when-there-is-one"},
+    {"id": "d5", "file": "dazzle_claude_config/cli.py", "original": "if _m and \"model\" not in _caps:", "mutated": "if _m and \"model\" in _caps:", "note": "Model warning inverted against capabilities"},
+    {"id": "d6", "file": "dazzle_claude_config/cli.py", "original": "_m = cfg.get(\"ai_merge_model\")", "mutated": "_m = cfg.get(\"ai_merge_backend\")", "note": "Wrong config key: the model-ignored warning is driven by the backend name"}
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_aiprompt.py"
+    ],
+    "timestamp": "2026-09-03T21:49:12-04:00"
+  },
+  "results": [
+    {
+      "id": "M3",
+      "file": "dazzle_claude_config/aiprompt.py",
+      "note": "re-run after test_one_failure_per_hunk_for_duplicates",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/aiprompt.py",
+      "note": "re-run after test_duplicates_differing_only_in_indentation_are_duplicates",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M6",
+      "file": "dazzle_claude_config/aiprompt.py",
+      "note": "re-run after test_the_base_pane_keeps_its_order_too",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M8",
+      "file": "dazzle_claude_config/aiprompt.py",
+      "note": "re-run after test_a_dropped_payload_line_fails_like_a_dropped_live_one",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M13",
+      "file": "dazzle_claude_config/aiprompt.py",
+      "note": "re-run after test_a_rewrite_at_exactly_the_threshold_needs_no_rule",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M14",
+      "file": "dazzle_claude_config/aiprompt.py",
+      "note": "re-run after test_parse_response_rejects_a_boolean_hunk_number",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M15",
+      "file": "dazzle_claude_config/aiprompt.py",
+      "note": "re-run after test_parse_response_keeps_the_first_answer_when_a_hunk_is_answered_twice",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 7
+  },
+  "anomalies": []
+}

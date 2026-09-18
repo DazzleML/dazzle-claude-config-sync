@@ -1,0 +1,62 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "-x",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_golden_ai_deep.py",
+      "tests/test_airung.py"
+    ],
+    "timestamp": "2026-09-15T16:26:20-04:00"
+  },
+  "results": [
+    {
+      "id": "M02",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "an insertion at a region's first line is no longer attributed to that region; it falls through to the last region, changing which region name and rung the edit reports",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M08",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "guarantees line: the '-- no tools: the model saw this file and the two diffs only' suffix appears when tools were on and is missing when they were off",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M09",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "dropped .lower() on the reason's region: a reason whose region differs only in case no longer matches the edit, so the report shows '(no reason given)'",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M10",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "removed guard: endswith('') is always true, so a reason with no path is attached to every edit whose region did not match",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 3,
+    "survived": 1
+  },
+  "anomalies": []
+}

@@ -1,0 +1,12 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_aimerge.py"],
+  "mutations": [
+    {"id": "M1", "file": "dazzle_claude_config/aimerge.py", "original": "        if len(o) == len(t) and o and all(", "mutated": "        if len(o) == len(t) and all(", "note": "re-run after test_kind_edge_cases_pinned_by_the_sweep"},
+    {"id": "M2", "file": "dazzle_claude_config/aimerge.py", "original": "                difflib.SequenceMatcher(None, a, b).ratio() >= SUPERSEDE_RATIO", "mutated": "                difflib.SequenceMatcher(None, a, b).ratio() > SUPERSEDE_RATIO", "note": "re-run after test_kind_edge_cases_pinned_by_the_sweep"},
+    {"id": "M6", "file": "dazzle_claude_config/aimerge.py", "original": "        while j < len(lines) and not lines[j].startswith(THEIRS_MARK):", "mutated": "        while j < len(lines) - 1 and not lines[j].startswith(THEIRS_MARK):", "note": "re-run after test_parse_keeps_the_last_line_of_an_unterminated_hunk"},
+    {"id": "M9", "file": "dazzle_claude_config/aimerge.py", "original": "            seg.hunk.after = segments[k + 1].lines[:context] if context else []", "mutated": "            seg.hunk.after = segments[k + 1].lines[-context:] if context else []", "note": "re-run after test_after_context_is_the_first_lines_of_the_next_clean_run"},
+    {"id": "M12", "file": "dazzle_claude_config/aimerge.py", "original": "        differences += 1\n        if i2 > i1:\n            ours_only.append(\" \".join(o[i1:i2]))\n        if j2 > j1:\n            theirs_only.append(\" \".join(t[j1:j2]))", "mutated": "        if i2 > i1:\n            ours_only.append(\" \".join(o[i1:i2]))\n        if j2 > j1:\n            theirs_only.append(\" \".join(t[j1:j2]))\n            differences += 1", "note": "re-run after test_word_diff_counts_a_pure_deletion_by_theirs"},
+    {"id": "M13", "file": "dazzle_claude_config/aimerge.py", "original": "    o = next(l for l in hunk.ours if l.strip())\n    t = next(l for l in hunk.theirs if l.strip())\n    d = word_diff(o, t)", "mutated": "    o = next(l for l in hunk.ours if l.strip())\n    t = next(l for l in hunk.theirs if l.strip())\n    d = word_diff(t, o)", "note": "re-run after the tightened sub_line_report test"},
+    {"id": "M14", "file": "dazzle_claude_config/aimerge.py", "original": "    if hunk.kind != \"paragraph\":\n        return []", "mutated": "    if hunk.kind == \"lines\":\n        return []", "note": "re-run after the tightened sub_line_report test"}
+  ]
+}

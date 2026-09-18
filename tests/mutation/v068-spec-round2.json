@@ -1,0 +1,22 @@
+{
+ "test_command": [
+  "python",
+  "-m",
+  "pytest",
+  "-q",
+  "-p",
+  "no:cacheprovider",
+  "tests/test_golden_ai_deep.py",
+  "tests/test_aideep.py",
+  "tests/test_airecord.py"
+ ],
+ "mutations": [
+  {
+   "id": "M6",
+   "file": "dazzle_claude_config/aideep.py",
+   "original": "        resp = backend.invoke(req)                 # never through the cache\n        out.model_used, out.honoured = resp.model_used, resp.honoured\n        if not resp.ok:\n            out.status = \"deep-failed\"\n            out.error = resp.error\n            return out\n        # The raw reply is kept (finding 4, 2026-09-16): under the unnumbered\n        # name now, moved beside the variant if one is staged, so an answer\n        # that was refused, empty or beyond the scope can still be read.\n        out.reply = airecord.reply_path(merged)\n        out.reply.parent.mkdir(parents=True, exist_ok=True)\n        out.reply.write_text(resp.text or \"\", encoding=\"utf-8\", newline=\"\\n\")",
+   "mutated": "        resp = backend.invoke(req)                 # never through the cache\n        out.model_used, out.honoured = resp.model_used, resp.honoured\n        out.reply = airecord.reply_path(merged)\n        out.reply.parent.mkdir(parents=True, exist_ok=True)\n        out.reply.write_text(resp.text or \"\", encoding=\"utf-8\", newline=\"\\n\")\n        if not resp.ok:\n            out.status = \"deep-failed\"\n            out.error = resp.error\n            return out",
+   "note": "the reply is written before the ok-check instead of after: a refused (not resp.ok) answer now also gets its reply kept on disk."
+  }
+ ]
+}

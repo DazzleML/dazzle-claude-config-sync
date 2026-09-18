@@ -1,0 +1,30 @@
+{
+ "test_command": [
+  "python",
+  "-m",
+  "pytest",
+  "-q",
+  "-x",
+  "-p",
+  "no:cacheprovider",
+  "tests/test_ai_plan.py",
+  "tests/test_merge_ai.py",
+  "tests/test_ailib_types.py",
+  "tests/test_aistep.py"
+ ],
+ "mutations": [
+  {"id": "M4", "file": "dazzle_claude_config/cli.py", "original": "    configured = cfg.get(\"ai_merge_backend\") or aistep.PROMPT_ONLY", "mutated": "    configured = cfg.get(\"ai_merge_backend\", aistep.PROMPT_ONLY)", "note": "round 2: a null backend in the config -- killing test test_a_config_that_spells_the_backend_out_as_null_reads_as_prompt_only_M4"},
+  {"id": "M6", "file": "dazzle_claude_config/cli.py", "original": "cache_dir=user / \"cache\" / \"ccs-ai\", backend=steps[0].backend,", "mutated": "cache_dir=user / \"cache\" / \"ccs-ai\", backend=steps[-1].backend,", "note": "round 2: the options' backend -- killing test test_each_step_runs_on_its_own_backend_M6 (and the step_opts fix behind it)"},
+  {"id": "M7", "file": "dazzle_claude_config/cli.py", "original": "        elif out.status in (\"deep-failed\", \"deep-escaped\"):", "mutated": "        elif out.status == \"deep-failed\":", "note": "round 2: deep-escaped silent -- killing test test_a_backend_that_escapes_the_sandbox_is_reported_in_the_merge_report_M7"},
+  {"id": "M8", "file": "dazzle_claude_config/cli.py", "original": "            if out.summary:\n                print(c(\"dim\", f\"    {out.summary}\"))", "mutated": "            if out.summary is not None:\n                print(c(\"dim\", f\"    {out.summary}\"))", "note": "round 2: a blank summary line -- killing test test_an_empty_summary_prints_no_blank_line_M8"},
+  {"id": "M9", "file": "dazzle_claude_config/cli.py", "original": "            print(c(\"dim\", f\"    ccs diff {label} --ai --variant {name.rsplit('.', 1)[-1]} opens it beside yours\"))", "mutated": "            print(c(\"dim\", f\"    ccs diff {label} --ai --variant {name.rsplit('.', 1)[0]} opens it beside yours\"))", "note": "round 2: the variant hint -- killing test test_the_variant_hint_names_the_answer_number_M9"},
+  {"id": "M10", "file": "dazzle_claude_config/merge.py", "original": "                if matching is not None:\n                    res.ai_matching[item.label] = matching", "mutated": "                if matching:\n                    res.ai_matching[item.label] = matching", "note": "round 2 (restated for the fixed code): answer 0 is an answer -- killing test test_the_question_is_asked_about_the_answer_in_merged_not_the_last_one_chosen_M10"},
+  {"id": "M11", "file": "dazzle_claude_config/merge.py", "original": "                    mech, why = _mechanical_for(item, recipe_out, ws / (safe + \".ai-work\"))", "mutated": "                    mech, why = _mechanical_for(item, None, ws / (safe + \".ai-work\"))", "note": "round 2: the deep step reads git's conflicted merge -- killing test test_the_deep_step_reads_the_recipes_proposal_not_gits_conflicted_merge_M11"},
+  {"id": "M12", "file": "dazzle_claude_config/merge.py", "original": "                    if dout.status in (\"deep-failed\", \"deep-escaped\", \"deep-skipped\"):", "mutated": "                    if dout.status in (\"deep-failed\", \"deep-escaped\"):", "note": "round 2: a skipped deep step not pending -- killing test test_a_deep_step_that_cannot_run_leaves_the_file_pending_M12"},
+  {"id": "M15", "file": "dazzle_claude_config/merge.py", "original": "        if not v.ok and item.label in res.ai_matching:", "mutated": "        if not v.ok:", "note": "round 2: the tripwire split applied to every item -- killing test test_a_hand_merge_that_loses_a_line_is_still_refused_M15"},
+  {"id": "M17", "file": "dazzle_claude_config/merge.py", "original": "    if recipe_out is None or recipe_out.status == \"no-hunks\":", "mutated": "    if recipe_out is None:", "note": "round 2: a clean merge skips the deep step -- killing test test_a_clean_merge_still_gets_the_deep_step_over_gits_own_result_M17"},
+  {"id": "M18", "file": "dazzle_claude_config/merge.py", "original": "    if strip >= len(parts):\n        return None\n    return Path(*parts[:len(parts) - strip])", "mutated": "    if strip > len(parts):\n        return None\n    return Path(*parts[:len(parts) - strip])", "note": "round 2: the live-root boundary -- killing test test_live_root_of_a_path_that_is_exactly_target_and_rel_is_none_M18"},
+  {"id": "M19", "file": "dazzle_claude_config/aistep.py", "original": "        return self.steps or (AiStep(\"recipe\", self.backend),)", "mutated": "        return tuple(self.steps)", "note": "round 2: the pre-plan default -- killing test test_options_without_a_plan_still_run_the_recipe_M19"},
+  {"id": "M20", "file": "dazzle_claude_config/_vendor/ailib/types.py", "original": "            parts.append(f\"endpoint={self.endpoint.rstrip('/')}\")", "mutated": "            parts.append(f\"endpoint={self.endpoint}\")", "note": "round 2: the endpoint's trailing slash -- killing test test_identity_normalises_the_endpoints_trailing_slash"}
+ ]
+}

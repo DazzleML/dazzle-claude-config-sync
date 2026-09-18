@@ -1,0 +1,29 @@
+{
+ "test_command": [
+  "python",
+  "-m",
+  "pytest",
+  "-q",
+  "-p",
+  "no:cacheprovider",
+  "tests/test_golden_ai_deep.py",
+  "tests/test_aideep.py",
+  "tests/test_airecord.py"
+ ],
+ "mutations": [
+  {
+   "id": "M2",
+   "file": "dazzle_claude_config/aideep.py",
+   "original": "candidate, why = _apply(sb, Path(sb.payload_rel).name, mechanical, hunked[-1])",
+   "mutated": "candidate, why = _apply(sb, Path(sb.payload_rel).name, mechanical, hunked[0])",
+   "note": "picks the FIRST hunked block instead of the last -- if a model offers a false-start hunk followed by its real corrected hunk, the stale first one applies instead of the model's final answer."
+  },
+  {
+   "id": "M3",
+   "file": "dazzle_claude_config/aideep.py",
+   "original": "hunked = [b for b in blocks if _HUNK_LINE.search(b)]",
+   "mutated": "hunked = [b for b in blocks if \"@@\" in b]",
+   "note": "loosens the hunk detector from an anchored '^@@ ' line match to a bare substring test -- a block that merely mentions '@@' in prose text (not as a real hunk header) would now count as hunked."
+  }
+ ]
+}

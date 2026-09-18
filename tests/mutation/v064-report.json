@@ -1,0 +1,191 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "-x",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_aideep.py",
+      "tests/test_airecord.py",
+      "tests/test_aistep.py"
+    ],
+    "timestamp": "2026-09-09T14:22:50-04:00"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "the payload file becomes a rung-3 neighbour; docstring says it is never one",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M2",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "removed guard: files under a .git directory in the component count as neighbours",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M3",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "boundary: rung 3 (neighbours) no longer refused for a no-tools backend",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "removed guard: the real-tree hash comparison never runs; an escape is kept as a variant",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M5",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "boundary: edits landing exactly on the allowed rung now fail instead of being kept",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M6",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "wrong field: a tools backend runs in the REAL checkout, not the sandbox",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M7",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "--check dropped: the patch is applied twice, so every non-empty diff fails at the second apply",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M8",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "None-vs-truthiness: an empty mechanical result proceeds into the sandbox and the backend",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M9",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "the loss check becomes a gate; docstring says it is a tripwire that never gates",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M10",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "comparison flip: only the payload lands in `others`, every other touched file is dropped from the ladder",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M11",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "swapped arguments: before/after content reversed for every non-payload edit",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M12",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "the deep step moves `chosen` to its own answer before writing the record; nothing is ever chosen here",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M13",
+      "file": "dazzle_claude_config/aisandbox.py",
+      "note": "dropped filter: .git directories are hashed, so git's own worktree bookkeeping reads as an escape",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M14",
+      "file": "dazzle_claude_config/aisandbox.py",
+      "note": "wrong constant: a worktree's .git pointer FILE is hashed and .gitignore is skipped",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M15",
+      "file": "dazzle_claude_config/aisandbox.py",
+      "note": "and/or swap: added and removed files are no longer reported as changed",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M16",
+      "file": "dazzle_claude_config/aisandbox.py",
+      "note": "the payload file is only written when missing; the worktree's HEAD content is what the model reads",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M17",
+      "file": "dazzle_claude_config/aisandbox.py",
+      "note": "wrong field: in copy mode the BEFORE content is read from the sandbox after the call, so before == after",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M18",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "wrong return value: the index is off by one, so the variant file is numbered n+1",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M19",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "wrong default: a recipe outcome that relies on the default reports itself as deep",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M20",
+      "file": "dazzle_claude_config/ailib.py",
+      "note": "swapped precedence: the step's backend is ignored whenever opts.backend is set",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 13,
+    "survived": 7
+  },
+  "anomalies": []
+}

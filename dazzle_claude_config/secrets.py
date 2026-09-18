@@ -26,6 +26,16 @@ HARD_DENY = [
 
 SECRET_RE = re.compile(
     r"sk-ant-[A-Za-z0-9_-]{10,}"
+    # OpenRouter (2026-09-09, #64): `sk-or-v1-` then 64 hex digits. Before this
+    # line a key pasted into a rules file passed collect; the openrouter leg of
+    # `--ai` made that a real risk rather than a hypothetical one.
+    r"|sk-or-v1-[0-9a-f]{40,}"
+    # OpenAI's three current shapes (project, service-account, admin keys)
+    # and the legacy 51-character one. The bare `sk-` form needs 40 unbroken
+    # alphanumerics, so `the sk-ant- prefix` in prose does not match (the
+    # hyphen at offset 3 ends the run).
+    r"|sk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}"
+    r"|sk-[A-Za-z0-9]{40,}"
     r"|gh[pousr]_[A-Za-z0-9]{20,}"
     r"|github_pat_[A-Za-z0-9_]{20,}"
     r"|AKIA[0-9A-Z]{16}"

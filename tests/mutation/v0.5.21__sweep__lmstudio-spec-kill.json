@@ -1,0 +1,43 @@
+{
+ "test_command": [
+  "python",
+  "-B",
+  "-m",
+  "pytest",
+  "-q",
+  "-p",
+  "no:cacheprovider",
+  "tests/test_backend_lmstudio.py",
+  "tests/test_vendored_ailib.py"
+ ],
+ "mutations": [
+  {
+   "id": "m1",
+   "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+   "original": "return bool(n and n > ROOMY_CONTEXT)",
+   "mutated": "return bool(n and n >= ROOMY_CONTEXT)",
+   "note": "boundary: equal to ROOMY_CONTEXT now counts as roomy"
+  },
+  {
+   "id": "m2",
+   "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+   "original": "if live is not None and _model not in live:",
+   "mutated": "if live and _model not in live:",
+   "note": "None-vs-truthiness: an explicitly EMPTY loaded list skips the guard -> the disk-load hazard"
+  },
+  {
+   "id": "m4",
+   "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+   "original": "return live[0], \"\"",
+   "mutated": "return live[-1], \"\"",
+   "note": "last loaded model instead of the first"
+  },
+  {
+   "id": "m9",
+   "file": "dazzle_claude_config/_vendor/ailib/backends/lmstudio.py",
+   "original": "n = d.get(\"loaded_context_length\") or d.get(\"max_context_length\")",
+   "mutated": "n = d.get(\"max_context_length\") or d.get(\"loaded_context_length\")",
+   "note": "prefers the static max over the window actually loaded"
+  }
+ ]
+}

@@ -1,0 +1,68 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-B",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_airules.py"
+    ],
+    "timestamp": "2026-09-03T21:21:15-04:00"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "re-run after test_describe_shows_a_seven_character_hash_like_git",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M2",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "re-run after test_a_headings_only_file_has_zero_rules_and_says_so",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M6",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "re-run after test_a_bom_never_leaks_into_the_first_rule",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M7",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "re-run after test_a_paragraph_mixing_a_hash_line_with_prose_is_a_rule",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M9",
+      "file": "dazzle_claude_config/airules.py",
+      "note": "re-run after test_trailing_whitespace_is_not_part_of_a_rule",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 5
+  },
+  "anomalies": []
+}

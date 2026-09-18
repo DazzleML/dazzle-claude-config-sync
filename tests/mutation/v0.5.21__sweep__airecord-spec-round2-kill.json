@@ -1,0 +1,10 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_airecord.py"],
+  "mutations": [
+    {"id": "N2", "file": "dazzle_claude_config/airecord.py", "original": "        if not self.created:\n            self.created = _now()", "mutated": "        self.created = _now()", "note": "re-run after test_a_loaded_record_keeps_its_original_timestamp"},
+    {"id": "N4", "file": "dazzle_claude_config/airecord.py", "original": "                  failures=list(failures))", "mutated": "                  failures=failures)", "note": "re-run after test_new_record_copies_the_failures_list"},
+    {"id": "N6", "file": "dazzle_claude_config/airecord.py", "original": "    known = {f.name for f in fields(Record)}\n    try:\n        return Record(**{k: v for k, v in data.items() if k in known})\n    except TypeError:\n        return None", "mutated": "    try:\n        return Record(**dict(data))\n    except TypeError:\n        return None", "note": "re-run after test_load_tolerates_an_unknown_key_and_a_bom"},
+    {"id": "N7", "file": "dazzle_claude_config/airecord.py", "original": "        data = json.loads(path.read_text(encoding=\"utf-8-sig\"))", "mutated": "        data = json.loads(path.read_text(encoding=\"utf-8\"))", "note": "re-run after test_load_tolerates_an_unknown_key_and_a_bom"},
+    {"id": "N8", "file": "dazzle_claude_config/airecord.py", "original": "            json.dump(body, f, indent=1)\n            f.write(\"\\n\")\n        os.replace(tmp, path)", "mutated": "            json.dump(body, f, indent=1)\n        os.rename(tmp, path)", "note": "re-run after test_write_overwrites_an_existing_record_and_ends_with_a_newline"}
+  ]
+}

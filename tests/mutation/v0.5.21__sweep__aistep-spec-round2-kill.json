@@ -1,0 +1,10 @@
+{
+  "test_command": ["python", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_aistep.py"],
+  "mutations": [
+    {"id": "N2", "file": "dazzle_claude_config/aistep.py", "original": "    fingerprint = {\"base\": norm_sha(b), \"ours\": norm_sha(o), \"theirs\": norm_sha(t),\n                   \"rules\": rules.sha, \"base_kind\": base_kind, **(facts or {})}", "mutated": "    fingerprint = {\"base\": norm_sha(b), \"ours\": norm_sha(o), \"theirs\": norm_sha(t),\n                   \"rules\": rules.sha, \"base_kind\": base_kind}", "note": "re-run after test_the_cache_key_includes_the_ancestry_facts_and_the_base_kind"},
+    {"id": "N3", "file": "dazzle_claude_config/aistep.py", "original": "                   \"rules\": rules.sha, \"base_kind\": base_kind, **(facts or {})}", "mutated": "                   \"rules\": rules.sha, **(facts or {})}", "note": "re-run after test_the_cache_key_includes_the_ancestry_facts_and_the_base_kind"},
+    {"id": "N6", "file": "dazzle_claude_config/aistep.py", "original": "            if hit and hit.get(\"raw_response\"):\n                answer = hit[\"raw_response\"]", "mutated": "            if hit:\n                answer = hit[\"raw_response\"]", "note": "re-run after test_a_cache_entry_without_an_answer_falls_through_to_the_backend"},
+    {"id": "N9", "file": "dazzle_claude_config/aistep.py", "original": "        rec = airecord.new_record(proposal=b\"\", valid=False, failures=failures, **common)", "mutated": "        rec = airecord.new_record(proposal=o, valid=False, failures=failures, **common)", "note": "re-run after the proposal_sha assertion in the rejected-answer test"},
+    {"id": "N11", "file": "dazzle_claude_config/aistep.py", "original": "                    reports=[l for h in parsed.hunks for l in aimerge.sub_line_report(h)],", "mutated": "                    reports=list(aimerge.sub_line_report(parsed.hunks[0])),", "note": "re-run after test_every_paragraph_hunk_gets_its_report"}
+  ]
+}

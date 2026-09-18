@@ -1,0 +1,84 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "-x",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_airung.py"
+    ],
+    "timestamp": "2026-09-09T08:11:10-04:00"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Widens the ATX heading indent boundary from 0-3 spaces to 0-4, a plausible off-by-one that admits headings CommonMark would treat as indented code.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M3",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Drops the `filter` keyword from PowerShell block recognition, a plausible simplify-the-alternation refactor that quietly stops matching PS filter blocks.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Drops hyphen support from the `function name` form's capture group while leaving the `name()` form unchanged, an inconsistent normalization loss between the two alternatives.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M7",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Removes the decorator-attachment guard clause: pending is overwritten by every decorator instead of remembering only the first, so a def attaches to its last decorator rather than its first.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M9",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Changes the brace-close rule in _brace_starts from checking the line OPENS with `}` to checking it ENDS with `}`, so a line like `x = { }` at column 0 would wrongly close the function block.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M12",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Boundary flip on _overlaps' empty-span (a1 == a2) branch: an anchor point sitting exactly at region.end no longer counts as overlapping that region.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M14",
+      "file": "dazzle_claude_config/airung.py",
+      "note": "Weakens needed_rung's anchored test from all() to any(): an edit spanning several regions is now rung-1 if just ONE touched region has an anchor, instead of requiring every touched region to have one.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 7
+  },
+  "anomalies": []
+}

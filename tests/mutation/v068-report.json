@@ -1,0 +1,110 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_golden_ai_deep.py",
+      "tests/test_aideep.py",
+      "tests/test_airecord.py"
+    ],
+    "timestamp": "2026-09-16T03:05:08-04:00"
+  },
+  "results": [
+    {
+      "id": "M1",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "drop --unidiff-zero only, keep --recount: a zero-context hunk should be refused again while an off-by-one-count hunk still applies.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M2",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "the relaxation flags are dropped from the --check call only; the real apply still carries them, so --check refuses a hunk the real apply would have taken.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M3",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "the relaxation flags are dropped from the real apply only; --check passes (it still has them) but the real apply then fails on the same hunk.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M4",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "the hunk-line detector is anchored on the wrong marker (a '---' file header instead of an '@@ ' hunk header), so a headers-only diff with no real hunk is misread as carrying one.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M5",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "or/and swap on the empty-diff test: a non-blank patch with headers but no hunk line no longer counts as 'nothing to change' and is sent to git instead.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M6",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "the reply is written before the ok-check instead of after: a refused (not resp.ok) answer now also gets its reply kept on disk.",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M7",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "the file is never moved to its numbered name (os.replace dropped) though out.reply is still repointed at it, so the numbered path the report and tests look for does not exist.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M8",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "off-by-one on the variant number fed to reply_path: for the first variant (n=1) this computes the unnumbered path (n-1=0), so the reply is renamed onto itself instead of taking the .1 name.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M9",
+      "file": "dazzle_claude_config/airecord.py",
+      "note": "the variant number is spliced in before '-ai' instead of after, so reply_path(merged, 1) names 'skills__s.py.merged.1-ai.deep-reply.txt' instead of 'skills__s.py.merged-ai.1.deep-reply.txt'.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M10",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "the reply line under the nothing-to-change (deep-empty) branch is guarded by the inverted condition, so it never prints when a reply actually exists.",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 9,
+    "survived": 1
+  },
+  "anomalies": []
+}
