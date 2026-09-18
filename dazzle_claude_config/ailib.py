@@ -83,12 +83,24 @@ CLAUDE_DEFAULT_MODEL = "claude-opus-5"
 #: flag vanish otherwise, so a pass-1 merge's argv is unchanged.
 _CLAUDE_TOOLS = "Read,Grep,Edit,Write"
 _CODEX_TOOLS = "workspace-write"
+#: The turn budget the claude preset carries when ai_merge_max_turns is unset:
+#: a call may run while it is alive, so what bounds its cost is how many
+#: agentic turns it may take, not a clock. Forty is generous for a merge of
+#: one file (the real paragraph case used five turns in its first 100 s).
+CLAUDE_DEFAULT_TURNS = 40
 
 PRESETS: dict[str, _Spec] = {
+    # v0.6.10 (run while alive): the streaming output, one event per line as
+    # the CLI works -- thinking included, with --include-partial-messages --
+    # so the transport can tell a thinking model from a dead one; the answer
+    # is the final result event; --max-turns is the cost fence. Measured
+    # 2026-09-18: 24 thinking events at ~1.3 s through a 29 s thought, the
+    # longest silence 1.6 s. One cache invalidation (the argv is the identity).
     "claude": _Spec("cli", name="claude", model=CLAUDE_DEFAULT_MODEL,
-                    command=("claude", "--output-format", "text", "--model", "{model}",
+                    command=("claude", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+                             "--model", "{model}", "--max-turns", "{turns}",
                              "--allowedTools", "{tools}", "-p", "-"),
-                    tools=_CLAUDE_TOOLS,
+                    tools=_CLAUDE_TOOLS, answer="stream-json:result", max_turns=CLAUDE_DEFAULT_TURNS,
                     env_unset=_CLAUDE_ENV_UNSET, candidates=_CLAUDE_CANDIDATES, on_prem=False),
     "claude-strict": _Spec("cli", name="claude-strict", model=CLAUDE_DEFAULT_MODEL,
                            command=("claude", "--output-format", "json", "--model", "{model}",
@@ -132,7 +144,7 @@ def keys_dir(user_claude: Path) -> Path:
 
 def spec_for(name: str, *, endpoint: str | None = None, model: str | None = None,
              api_key_env: str | None = None, api_key_file: str | None = None,
-             keys_dir: Path | None = None) -> _Spec:
+             keys_dir: Path | None = None, max_turns: int | None = None) -> _Spec:
     """The preset `name` with the person's overrides applied. prompt-only is
     a mode of the caller, not a backend, and is refused here on purpose.
 
@@ -158,6 +170,8 @@ def spec_for(name: str, *, endpoint: str | None = None, model: str | None = None
         changes["credential_env"] = str(api_key_env)
     if api_key_file:
         changes["credential_file"] = str(api_key_file)
+    if max_turns is not None and "{turns}" in " ".join(spec.command):
+        changes["max_turns"] = int(max_turns)            # only a preset with the placeholder can honour it
     spec = spec.with_(**changes) if changes else spec
     if keys_dir is not None and spec.credential_env:
         spec = spec.with_(credential_fallbacks=(str(Path(keys_dir) / f"{name}.env"),))
@@ -174,4 +188,5 @@ def build_backend(opts, name: str | None = None) -> _Backend:
                           model=getattr(opts, "model", None),
                           api_key_env=getattr(opts, "api_key_env", None),
                           api_key_file=getattr(opts, "api_key_file", None),
-                          keys_dir=getattr(opts, "keys_dir", None)))
+                          keys_dir=getattr(opts, "keys_dir", None),
+                          max_turns=getattr(opts, "max_turns", None)))

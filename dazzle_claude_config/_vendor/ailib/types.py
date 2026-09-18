@@ -74,7 +74,16 @@ class Spec:
                       identical to a preset without a grant
     answer         -- CLI transports: where the answer is. "stdout" (default),
                       "stdout-json:<key>" (stdout is a JSON envelope; take one
-                      key), or "file:{output_file}"
+                      key), "stream-json:<key>" (stdout is one JSON event per
+                      line as the CLI works; the answer is one key of the last
+                      event whose type is "result", and an event marked
+                      is_error is a failure carrying that key's text), or
+                      "file:{output_file}"
+    max_turns      -- CLI transports: what `{turns}` becomes -- the CLI's own
+                      budget of agentic turns (claude's `--max-turns`), the
+                      cost fence for a call that is allowed to run while it is
+                      alive. 0 drops the placeholder and its flag. Part of the
+                      identity, because it bounds the answer
     env_unset      -- variables removed from the CHILD's environment
     candidates     -- extra executable paths tried after PATH
     on_prem        -- the preset's word on whether data stays on the user's
@@ -99,6 +108,7 @@ class Spec:
     on_prem: bool | None = None
     hint: str = ""
     extra: tuple[tuple[str, Any], ...] = ()
+    max_turns: int = 0
 
     def with_(self, **changes: Any) -> "Spec":
         return dataclasses.replace(self, **changes)
@@ -121,6 +131,8 @@ class Spec:
             parts.append(f"model={self.model}")
         if self.command:
             parts.append(f"command={' '.join(self.command)}")
+        if self.max_turns:
+            parts.append(f"turns={self.max_turns}")
         if self.extra:
             parts.append(f"extra={json.dumps(sorted(self.extra), sort_keys=True, default=str)}")
         if self.credential_env:
@@ -138,20 +150,30 @@ class Request:
     max_tokens=None and temperature=None mean "not sent": a low ceiling is
     exactly how a reasoning model comes back with empty content. `stream_to`
     is a text sink a transport echoes output into as it arrives; it is not
-    part of the fingerprint, and neither is the timeout. `workdir` is a
+    part of the fingerprint, and neither are the two limits. `workdir` is a
     directory the caller prepared for the backend to work IN -- a CLI runs
     there, may read and write there under the spec's `tools` grant, and the
     directory is left for the caller to read back; "" means the transport's
     own throwaway scratch. Where the child ran is not what was asked, so
     the fingerprint excludes it too.
+
+    The two limits (2026-09-18, run while alive): a call ends when the model
+    finishes, when it is demonstrably dead, or when the caller set a
+    ceiling -- never because a number guessed in advance ran out. `idle` is
+    the silence, in seconds, after which a backend that has shown no sign of
+    life is declared dead and stopped (a thinking model is observably alive:
+    its output arrives as it thinks; a dead process emits nothing).
+    `timeout` is a hard ceiling on the whole call and 0, the default, means
+    there is none; a caller sets one for a machine with nobody watching.
     """
     prompt: str
     schema: dict | None = None
     max_tokens: int | None = None
-    timeout: int = 120
+    timeout: int = 0
     temperature: float | None = 0
     stream_to: TextIO | None = None
     workdir: str = ""
+    idle: int = 180
 
     def fingerprint(self) -> str:
         payload = json.dumps({"prompt": self.prompt, "schema": self.schema,

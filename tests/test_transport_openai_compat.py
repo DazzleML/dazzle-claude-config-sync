@@ -154,6 +154,18 @@ def test_a_loaded_model_answers_and_the_answer_comes_back(server):
     assert "schema" in r.honoured and "model" in r.honoured
 
 
+def test_no_ceiling_means_the_silence_window_is_the_ceiling_here_v0610(server):
+    """v0.6.10, run while alive: `Request.timeout` 0 means no ceiling. This
+    transport does not stream yet, so a server shows no sign of life while
+    it works and the silence window stands in for the ceiling -- and a zero
+    must never reach `urlopen`, which would fail at once (the full suite
+    caught exactly that on the first run)."""
+    b = build(_spec(server.url))
+    r = b.invoke(Request(prompt="resolve this", schema=SCHEMA, timeout=0, idle=10))
+    assert r.ok, r.error
+    assert json.loads(r.text) == ANSWER
+
+
 def test_the_request_asks_for_a_strict_schema_not_a_json_object(server):
     """The measured fact the lmstudio backend existed around: LM Studio
     answers `json_object` with HTTP 400, while `json_schema` + strict works."""

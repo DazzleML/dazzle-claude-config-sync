@@ -25,9 +25,23 @@ Carried from the transport's predecessors, because they were measured:
 while `CLAUDECODE` is set; executable candidates beyond PATH (npm and WinGet
 shims for codex, `~/.local/bin` for claude); a `--version` check for a shim
 that can point at a deleted binary; and the streaming reader with its
-timeout/kill loop. The prompt always travels on stdin -- the argv length
-limit that once forced a switch at 8000 bytes only ever applied to the argv
-path, and both CLIs read stdin.
+kill loop. The prompt always travels on stdin -- the argv length limit that
+once forced a switch at 8000 bytes only ever applied to the argv path, and
+both CLIs read stdin.
+
+**Run while alive** (2026-09-18): every call goes through the streaming
+reader, whether or not the caller wants the lines echoed, because the lines
+are the sign of life. A call ends when the child exits, when nothing has
+arrived for `Request.idle` seconds (the child is declared dead and killed,
+and the sentence says how long it was silent), or when the caller set a
+ceiling in `Request.timeout` and the whole call ran past it. Measured before
+this was built: the deep step on Claude Opus over a real file was cut at a
+fixed 120 s while its transcript showed it reading and thinking the whole
+time; with `--output-format stream-json --include-partial-messages` its
+thinking arrived as an event every second or so, the longest silence 1.6 s.
+The `stream-json:<key>` answer locator reads that format: the answer is one
+key of the last `result` event, and an `is_error` result is a failure
+carrying its text.
 """
 from __future__ import annotations
 
@@ -43,7 +57,12 @@ from pathlib import Path
 
 from ..types import MODEL, ON_PREM, SCHEMA, STREAM, TOOLS, Readiness, Request, Response, Spec
 
-_PLACEHOLDERS = ("{model}", "{schema}", "{schema_file}", "{prompt_file}", "{output_file}", "{cwd}", "{tools}")
+_PLACEHOLDERS = ("{model}", "{schema}", "{schema_file}", "{prompt_file}", "{output_file}", "{cwd}", "{tools}",
+                 "{turns}")
+
+
+class _Stopped(Exception):
+    """The child was killed by this transport, and the sentence says why."""
 
 
 def find_exe(name: str, candidates: tuple[str, ...] = ()) -> str | None:
@@ -113,6 +132,7 @@ class SubprocessCli:
             "{schema_file}": "", "{prompt_file}": "", "{output_file}": "",
             "{cwd}": req.workdir or str(scratch),
             "{tools}": spec.tools if req.workdir else "",
+            "{turns}": str(spec.max_turns) if spec.max_turns else "",
         }
         made: dict[str, Path] = {}
         tpl = " ".join(spec.command)
@@ -170,16 +190,13 @@ class SubprocessCli:
             stdin = None if "prompt" in made else req.prompt
             started = time.monotonic()
             try:
+                # Always the streaming reader: the lines are the sign of life
+                # the idle rule watches, echoed or not.
+                rc, out, err = self._stream(name, argv, env, cwd, stdin, req)
                 if req.stream_to is not None:
-                    rc, out, err = self._stream(argv, env, cwd, stdin, req)
                     honoured.append(STREAM)
-                else:
-                    p = subprocess.run(argv, input=stdin, capture_output=True, text=True,
-                                       encoding="utf-8", errors="replace", timeout=req.timeout,
-                                       cwd=str(cwd), env=env)
-                    rc, out, err = p.returncode, p.stdout, p.stderr
-            except subprocess.TimeoutExpired:
-                return Response("failed", error=f"{name} timed out after {req.timeout}s")
+            except _Stopped as e:
+                return Response("failed", error=str(e), elapsed=time.monotonic() - started)
             except (FileNotFoundError, OSError) as e:
                 return Response("failed", error=f"cannot run {exe}: {e}")
             elapsed = time.monotonic() - started
@@ -216,6 +233,26 @@ class SubprocessCli:
                 return "", f"the JSON envelope has no key {key!r} (it has: {', '.join(obj)})"
             val = obj[key]
             return (val if isinstance(val, str) else json.dumps(val)), ""
+        if where.startswith("stream-json:"):
+            key = where.split(":", 1)[1]
+            for raw in reversed(stdout.splitlines()):          # the result is the LAST event
+                line = raw.strip()
+                if not line.startswith("{"):
+                    continue
+                try:
+                    obj = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(obj, dict) or obj.get("type") != "result":
+                    continue
+                if obj.get("is_error"):
+                    said = obj.get(key) if isinstance(obj.get(key), str) else obj.get("result")
+                    return "", f"{spec.command[0]} reported an error: {str(said or obj.get('subtype') or '')[:400]}"
+                if key not in obj:
+                    return "", f"the result event has no key {key!r} (it has: {', '.join(obj)})"
+                val = obj[key]
+                return (val if isinstance(val, str) else json.dumps(val)), ""
+            return "", f"{spec.command[0]} printed no result event on stdout"
         if where.startswith("file:"):
             path = made.get("output")
             if path is None:
@@ -226,35 +263,50 @@ class SubprocessCli:
                 return "", f"{spec.command[0]} wrote no answer file: {e}"
         return "", f"unknown answer locator {where!r}"
 
-    def _stream(self, argv, env, cwd, stdin, req: Request):
-        """Echo the child's output to `req.stream_to` as it arrives, with the
-        timeout enforced by polling; returns (rc, output, '')."""
+    def _stream(self, name: str, argv, env, cwd, stdin, req: Request):
+        """Read the child's output as it arrives (echoing each line to
+        `req.stream_to` when there is one), and end the call on silence or
+        on the caller's ceiling; returns (rc, output, '')."""
         proc = subprocess.Popen(argv, env=env, cwd=str(cwd),
                                 stdin=subprocess.PIPE if stdin is not None else None,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, encoding="utf-8", errors="replace")
-        if stdin is not None:
-            proc.stdin.write(stdin)
-            proc.stdin.close()
         lines: list[str] = []
+        last = [time.monotonic()]                       # when the child last said anything
 
         def _reader():
             for line in proc.stdout:
                 lines.append(line)
-                try:
-                    req.stream_to.write(line)
-                    req.stream_to.flush()
-                except (OSError, ValueError):
-                    pass
+                last[0] = time.monotonic()
+                if req.stream_to is not None:
+                    try:
+                        req.stream_to.write(line)
+                        req.stream_to.flush()
+                    except (OSError, ValueError):
+                        pass
 
+        # The reader drains stdout BEFORE the prompt is written, so a child
+        # that talks before it has read all of stdin cannot fill its pipe
+        # while this side is still blocked writing a large prompt.
         t = threading.Thread(target=_reader, daemon=True)
         t.start()
+        if stdin is not None:
+            try:
+                proc.stdin.write(stdin)
+                proc.stdin.close()
+            except (OSError, ValueError):
+                pass                                    # the child exited early; its rc says so
         start = time.monotonic()
         while proc.poll() is None:
-            if time.monotonic() - start > req.timeout:
+            now = time.monotonic()
+            if req.idle and now - last[0] > req.idle:
                 proc.kill()
                 proc.wait()
-                raise subprocess.TimeoutExpired(argv, req.timeout)
+                raise _Stopped(f"{name} gave no sign of life for {req.idle}s -- stopped")
+            if req.timeout and now - start > req.timeout:
+                proc.kill()
+                proc.wait()
+                raise _Stopped(f"{name} ran past the {req.timeout}s ceiling you set -- stopped")
             time.sleep(0.05)
         t.join(timeout=5)
         return proc.returncode, "".join(lines), ""

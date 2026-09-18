@@ -38,9 +38,10 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
-from . import airecord, airung, aisandbox
+from . import airecord, airung, aisandbox, aistep
 from .aistep import AiOptions, AiOutcome, AiStep
 from .seeddecisions import norm_sha
 
@@ -275,18 +276,34 @@ def deep_step(*, label: str, base: bytes, ours: bytes, theirs: bytes, mechanical
     guard = aisandbox.Guard.take([checkout_repo, live_component])
     sb = aisandbox.prepare(workdir=workdir, checkout_repo=checkout_repo, live_root=live_root,
                            entry=entry, rel=rel, mechanical=mechanical)
+    # What a failure leaves behind (v0.6.10, run while alive): a call that
+    # was declared dead, that failed, or that the person stopped keeps its
+    # sandbox for reading, named in the report; only a call that finished
+    # releases it. Before this, a timed-out run left nothing to look at.
+    keep = False
+    started_at = time.time()
     try:
         before = aisandbox.digest(sb.root)
         prompt = render_prompt(label=label, sb=sb, scope=scope, base=base, ours=ours, theirs=theirs,
                                mechanical=mechanical, dossier=dossier, variants=list(variants), tools=tools)
-        req = ailib.Request(prompt=prompt, schema=None, timeout=opts.timeout,
+        req = ailib.Request(prompt=prompt, schema=None, timeout=opts.timeout, idle=opts.idle,
                             workdir=str(sb.root) if tools else "",
-                            stream_to=sys.stdout if opts.verbose else None)
-        resp = backend.invoke(req)                 # never through the cache
+                            stream_to=aistep.sink_for(opts))
+        try:
+            resp = backend.invoke(req)             # never through the cache
+        except KeyboardInterrupt:
+            keep = True
+            raise
         out.model_used, out.honoured = resp.model_used, resp.honoured
         if not resp.ok:
+            keep = True
             out.status = "deep-failed"
             out.error = resp.error
+            if "no sign of life" in (resp.error or ""):
+                where = transcript_for(sb.root, since=started_at)
+                if where is not None:
+                    out.reports.append(f"what it was doing: {where}")
+            out.reports.append(f"sandbox kept: {sb.root}")
             return out
         # The raw reply is kept (finding 4, 2026-09-16): under the unnumbered
         # name now, moved beside the variant if one is staged, so an answer
@@ -400,4 +417,25 @@ def deep_step(*, label: str, base: bytes, ours: bytes, theirs: bytes, mechanical
                 out.tripwire = [f"the loss check itself failed: {e}"]
         return out
     finally:
-        aisandbox.release(sb)
+        if not keep:
+            aisandbox.release(sb)
+
+
+def transcript_for(cwd: Path, *, since: float) -> Path | None:
+    """Claude Code's own transcript of a `-p` run in `cwd`, when one exists
+    from this call: it keeps one under `<config dir>/projects/<slug>/`,
+    the slug being the cwd with every character that is not a letter or a
+    digit turned into `-` (read against the run of 2026-09-18). The newest
+    `.jsonl` there written since the call started (a few seconds of slack)
+    is what the model was doing when the call ended. `CLAUDE_CONFIG_DIR`
+    is the CLI's own override of its config directory."""
+    base = os.environ.get("CLAUDE_CONFIG_DIR") or str(Path.home() / ".claude")
+    slug = re.sub(r"[^A-Za-z0-9]", "-", str(cwd))
+    folder = Path(base) / "projects" / slug
+    try:
+        candidates = [p for p in folder.glob("*.jsonl") if p.stat().st_mtime >= since - 5]
+    except OSError:
+        return None
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)

@@ -4,6 +4,18 @@ All notable changes to dazzle-claude-config (ccs) are documented here. Format fo
 
 ## [Unreleased]
 
+## [0.6.10] - 2026-09-18
+
+### Changed
+- **An AI call runs while it is alive.** The fixed 120-second limit on every backend call is gone. A call now ends when the model finishes, when it has been silent for `ai_merge_idle` seconds (180; `--ai-idle`), or when you set a ceiling in `ai_merge_timeout` (0 = none; `--ai-timeout`). The Claude Code preset is asked for its streaming output so its thinking counts as a sign of life, and `ai_merge_max_turns` (40) fences the cost of a call that may run as long as it works. Why: the first real file through the deep step on Claude Opus was cut off mid-thought at 120 seconds; its own transcript showed it reading and thinking the whole time.
+- The `claude` preset's command line changed (its output format, and a turn budget), so cached recipe answers from that preset are asked again once.
+- The server backends (`lmstudio`, `ollama`, `openai`, `openrouter`) do not stream yet, so for them the silence window is the ceiling when none is set: a server call ends at `ai_merge_idle` seconds (180) rather than the old 120.
+
+### Added
+- A `still working` line every half minute at a console while a call runs, with what has arrived so far; nothing when piped, and `--ai-verbose` still echoes everything.
+- When a call is stopped for silence, the deep step keeps its sandbox and names it, and names Claude Code's own transcript of the run so you can read what the model was doing.
+- The stream-json answer locator in the vendored library, and the two limits and the turn budget on its `Request` and `Spec`.
+
 ## [0.6.9] - 2026-09-16
 
 ### Fixed
@@ -519,7 +531,8 @@ Fixes both issues 0.3.0 shipped as known, plus five more found by running the to
 - Console scripts `ccs` and `dazzle-claude-config`; stdlib-only, Python 3.10+
 - 53 automated tests + tester-agent exploratory report + human test checklist (`tests/checklists/v0.1.0__Phase1__collect-apply-status-diff.md`)
 
-[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.9...HEAD
+[Unreleased]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.10...HEAD
+[0.6.10]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.9...v0.6.10
 [0.6.9]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.8...v0.6.9
 [0.6.8]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.7...v0.6.8
 [0.6.7]: https://github.com/DazzleML/dazzle-claude-config/compare/v0.6.6...v0.6.7

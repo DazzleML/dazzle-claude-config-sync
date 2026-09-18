@@ -103,7 +103,7 @@ def test_extra_is_ordered_in_the_identity():
 def test_a_request_fingerprint_excludes_the_stream_and_the_timeout():
     import io
     a = Request(prompt="p", schema={"type": "object"})
-    b = Request(prompt="p", schema={"type": "object"}, timeout=7, stream_to=io.StringIO())
+    b = Request(prompt="p", schema={"type": "object"}, timeout=7, idle=9, stream_to=io.StringIO())
     assert a.fingerprint() == b.fingerprint()
     assert a.fingerprint() != Request(prompt="q", schema={"type": "object"}).fingerprint()
     assert a.fingerprint() != Request(prompt="p").fingerprint()
@@ -129,7 +129,26 @@ def test_a_request_fingerprint_excludes_the_workdir_and_a_spec_may_carry_a_grant
 def test_request_defaults_send_nothing_they_do_not_have_to():
     r = Request(prompt="p")
     assert r.schema is None and r.max_tokens is None and r.stream_to is None
-    assert r.temperature == 0 and r.timeout == 120
+    assert r.temperature == 0
+
+
+def test_a_request_runs_while_alive_by_default_v0610():
+    """Run while alive (2026-09-18): no ceiling unless a person sets one
+    (`timeout` 0 means none), and a call ends on SILENCE -- `idle` seconds
+    with nothing from the backend -- because a thinking model is observably
+    alive and a dead process is not."""
+    r = Request(prompt="p")
+    assert r.timeout == 0 and r.idle == 180
+    assert Request(prompt="p", timeout=600).timeout == 600 and Request(prompt="p", idle=5).idle == 5
+
+
+def test_a_turn_budget_is_part_of_who_you_asked_v0610():
+    """`Spec.max_turns` is the cost fence for a CLI that loops; it bounds the
+    answer, so it is in the identity -- and absent from it when unset."""
+    s = Spec("cli", command=("claude", "--max-turns", "{turns}", "-p", "-"))
+    assert s.max_turns == 0 and "turns=" not in s.identity()      # the template's {turns} is not a budget
+    assert "turns=40" in s.with_(max_turns=40).identity()
+    assert s.identity() != s.with_(max_turns=40).identity()
 
 
 # -- Response and Readiness ----------------------------------------------------------

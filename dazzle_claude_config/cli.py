@@ -1086,6 +1086,13 @@ day to day, once it is installed:
                                  "inputs were answered before (the answer is cached)")
             sp.add_argument("--ai-verbose", action="store_true",
                             help="with --ai: stream the backend's output as it arrives")
+            sp.add_argument("--ai-idle", type=int, default=None, metavar="SECONDS",
+                            help="with --ai: how long a backend may be silent before it is "
+                                 "declared dead and stopped (default: ai_merge_idle, 180). A call "
+                                 "runs while it is alive -- a thinking model is not silent")
+            sp.add_argument("--ai-timeout", type=int, default=None, metavar="SECONDS",
+                            help="with --ai: a hard ceiling on one call, for a machine with nobody "
+                                 "watching (default: ai_merge_timeout, 0 = none)")
             sp.add_argument("--ai-scope", default="hunk", choices=("hunk", "file", "neighbours", "project"),
                             help="with --ai ...,deep: how far the deep step may edit -- hunk "
                                  "(the changed regions and their surrounding code; default), "
@@ -1704,7 +1711,7 @@ def parse_plan(token: str, *, configured: str) -> list:
 def _ai_options(args, roots):
     """The `--ai` flags and the config key, as one object for merge.run --
     or None after printing why not."""
-    from . import ailib, airules, airung, aistep
+    from . import ailib, airules, airung, aistep, merge
     cfg = userconfig.load(roots["USER_CLAUDE"])
     configured = cfg.get("ai_merge_backend") or aistep.PROMPT_ONLY
     try:
@@ -1735,7 +1742,16 @@ def _ai_options(args, roots):
         model=cfg.get("ai_merge_model") or None,
         api_key_env=cfg.get("ai_merge_api_key_env") or None,
         api_key_file=cfg.get("ai_merge_api_key_file") or None,
-        keys_dir=ailib.keys_dir(user))
+        keys_dir=ailib.keys_dir(user),
+        # Run while alive (v0.6.10): the flag wins over the key. `load()`
+        # applies every key's default, so the keys are always present here
+        # (the audit found a fallback literal that could never run); the
+        # progress line only where a person can see it.
+        idle=int(args.ai_idle if getattr(args, "ai_idle", None) is not None else cfg.get("ai_merge_idle", 180)),
+        timeout=int(args.ai_timeout if getattr(args, "ai_timeout", None) is not None
+                    else cfg.get("ai_merge_timeout", 0)),
+        max_turns=int(cfg.get("ai_merge_max_turns", 40)),
+        progress=merge.interactive())
 
 
 def _n_lines(n: int) -> str:

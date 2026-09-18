@@ -1,0 +1,130 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_transport_cli.py",
+      "tests/test_aideep.py",
+      "tests/test_aistep.py",
+      "tests/test_merge_ai.py",
+      "tests/test_ailib_types.py",
+      "tests/test_ailib_presets.py",
+      "tests/test_transport_openai_compat.py"
+    ],
+    "timestamp": "2026-09-18T04:22:57-04:00"
+  },
+  "results": [
+    {
+      "id": "M-1",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "drop the req.idle guard on the silence comparison -- an idle of 0 would then compare 'now - last[0] > 0' and could fire immediately",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M-2",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "drop the req.timeout guard on the ceiling comparison -- timeout=0 (the default, 'no ceiling') would then cut the call at once",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M-3",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "change the idle-kill sentence's wording away from 'no sign of life'",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M-4",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "stream-json locator scans forward instead of from the end, so it would take the FIRST result event rather than the last",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M-5",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "the is_error branch of a stream-json result event never fires -- an error result would be read as an answer",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M-6",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "the {turns} placeholder always substitutes (even 0) instead of dropping the flag when max_turns is unset",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M-7",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/openai_compat.py",
+      "note": "drop the idle fallback -- timeout=0 (no ceiling) would reach urlopen(timeout=0) and fail at once",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M-8",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "a failed deep call no longer sets keep=True, so its sandbox would be released in the finally block instead of kept",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M-9",
+      "file": "dazzle_claude_config/aideep.py",
+      "note": "the transcript-naming branch never fires, even when the backend was declared dead",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M-10",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "Progress's tool-call heuristic widens from AND to OR, counting more lines as tool calls than intended",
+      "verdict": "survived",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M-11",
+      "file": "dazzle_claude_config/cli.py",
+      "note": "the config value wins over the --ai-idle flag instead of the flag winning over the config",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M-12",
+      "file": "dazzle_claude_config/_vendor/ailib/types.py",
+      "note": "Spec.identity() never includes the turn budget, so two specs differing only in max_turns would cache-collide",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "survived": 3,
+    "killed": 9
+  },
+  "anomalies": []
+}

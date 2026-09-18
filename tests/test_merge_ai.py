@@ -472,6 +472,67 @@ def test_the_config_key_picks_the_backend_when_ai_has_no_value(tmp_path, capsys,
     assert rc == EXIT_CLEAN
 
 
+def test_the_two_limits_reach_the_request_from_the_flags_and_the_config_v0610(tmp_path, capsys, monkeypatch):
+    """v0.6.10, run while alive: a call ends on silence (`idle`, default 180)
+    or on a ceiling only when a person set one (`timeout`, default none).
+    `--ai-idle` / `--ai-timeout` win over `ai_merge_idle` / `ai_merge_timeout`,
+    the turn budget comes from `ai_merge_max_turns` (the preset's 40 when
+    unset), and no progress sink is attached when no console is."""
+    w = _world(tmp_path)
+    reply = "```json\n" + json.dumps(GOOD) + "\n```"
+    from dazzle_claude_config._vendor.ailib import backend as _bm
+    from dazzle_claude_config._vendor.ailib.types import Readiness, Response
+    seen = {}
+
+    class _T:
+        def probe(self, spec): return Readiness(True, "fake")
+        def invoke(self, spec, req):
+            seen.update(idle=req.idle, timeout=req.timeout, stream_to=req.stream_to, turns=spec.max_turns)
+            return Response("answered", text=reply, model_used="fake")
+        def capabilities(self, spec): return frozenset({"model", "schema"})
+
+    _bm.transport_for("cli")
+    monkeypatch.setitem(_bm._TRANSPORTS, "cli", _T())
+    cfg = w["user"] / "ccs-config.json"
+    cfg.write_text(json.dumps({"ai_merge_backend": "claude"}), encoding="utf-8")
+    assert main(_ccs(w, "merge", "skills/s.md", "--ai", "--no-launch")) == EXIT_CLEAN
+    assert seen["idle"] == 180 and seen["timeout"] == 0 and seen["turns"] == 40
+    assert seen["stream_to"] is None                                   # pytest is not a console
+    cfg.write_text(json.dumps({"ai_merge_backend": "claude", "ai_merge_idle": 7, "ai_merge_timeout": 90,
+                               "ai_merge_max_turns": 3}), encoding="utf-8")
+    main(_ccs(w, "merge", "skills/s.md", "--ai", "--no-launch", "--ai-refresh"))
+    assert seen["idle"] == 7 and seen["timeout"] == 90 and seen["turns"] == 3
+    main(_ccs(w, "merge", "skills/s.md", "--ai", "--no-launch", "--ai-refresh", "--ai-idle", "5", "--ai-timeout", "60"))
+    assert seen["idle"] == 5 and seen["timeout"] == 60                 # the flags win
+    capsys.readouterr()
+
+
+def test_a_console_gets_a_progress_sink_and_verbose_keeps_the_echo_v0610(tmp_path, capsys, monkeypatch):
+    w = _world(tmp_path)
+    reply = "```json\n" + json.dumps(GOOD) + "\n```"
+    from dazzle_claude_config import aistep
+    from dazzle_claude_config._vendor.ailib import backend as _bm
+    from dazzle_claude_config._vendor.ailib.types import Readiness, Response
+    seen = {}
+
+    class _T:
+        def probe(self, spec): return Readiness(True, "fake")
+        def invoke(self, spec, req):
+            seen["stream_to"] = req.stream_to
+            return Response("answered", text=reply, model_used="fake")
+        def capabilities(self, spec): return frozenset({"model", "schema"})
+
+    _bm.transport_for("cli")
+    monkeypatch.setitem(_bm._TRANSPORTS, "cli", _T())
+    monkeypatch.setattr(merge, "interactive", lambda: True)
+    (w["user"] / "ccs-config.json").write_text(json.dumps({"ai_merge_backend": "claude"}), encoding="utf-8")
+    main(_ccs(w, "merge", "skills/s.md", "--ai", "--no-launch"))
+    assert isinstance(seen["stream_to"], aistep.Progress)
+    main(_ccs(w, "merge", "skills/s.md", "--ai", "--no-launch", "--ai-refresh", "--ai-verbose"))
+    assert seen["stream_to"] is __import__("sys").stdout
+    capsys.readouterr()
+
+
 # -- diff --ai -----------------------------------------------------------------
 
 def test_diff_ai_opens_the_proposal_beside_yours(tmp_path, capsys, monkeypatch):

@@ -150,6 +150,14 @@ KEYS: dict[str, Key] = _attach_explanations({
     # value is read by the transport at request time and is never a setting.
     "ai_merge_api_key_file": Key(default=None, env="CCS_AI_MERGE_API_KEY_FILE"),
 
+    # Run while alive (v0.6.10): a call ends when the model finishes, when it
+    # has been silent for `ai_merge_idle` seconds, or when a person set a
+    # ceiling in `ai_merge_timeout` (0: none). `ai_merge_max_turns` fences
+    # the cost of a CLI that loops. Seconds and turns, as integers.
+    "ai_merge_idle": Key(default=180, env="CCS_AI_MERGE_IDLE"),
+    "ai_merge_timeout": Key(default=0, env="CCS_AI_MERGE_TIMEOUT"),
+    "ai_merge_max_turns": Key(default=40, env="CCS_AI_MERGE_MAX_TURNS"),
+
     "interactive": Key(default=True, env="CCS_INTERACTIVE"),
 
     "status_detail": Key(

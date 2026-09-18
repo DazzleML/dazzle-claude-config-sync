@@ -111,6 +111,21 @@ The vocabulary is the merge verb's: **staged** means in the workspace, nothing i
 | `prompt written <file> -- <path>` | prompt-only: answer it and re-run, or pass `--ai-response` |
 | `refused <file> -- no common ancestor: a two-way guess is not a merge` | supply a base or resolve by hand |
 | `not installed <file> -- the AI's proposal was not confirmed as reviewed` | `--accept` asked and was not told yes |
+| `    still working: 90s, 41 events, 3 tool calls` | a call is running and you are at a console: one line every half minute with what has arrived so far (see "How long a call may run"); nothing is printed when the output is piped, and `--ai-verbose` echoes everything instead |
+| `NOT KEPT <file> -- claude gave no sign of life for 180s -- stopped (deep via claude)` | the hang detector: nothing arrived from the backend for that long, so it was declared dead; `what it was doing:` names the CLI's own transcript of the run when there is one, and `sandbox kept:` where the copy it worked in was left |
+| `NOT KEPT <file> -- claude ran past the 600s ceiling you set -- stopped (deep via claude)` | `ai_merge_timeout` (or `--ai-timeout`) was set and the whole call outlasted it; the sandbox is kept the same way |
+
+## How long a call may run
+
+A call ends when the model finishes, when it is demonstrably dead, or when you stop it -- never because a number guessed in advance ran out. Before 0.6.10 every call had a fixed 120 seconds, and the first real file through the deep step on Claude Opus was cut off while the model was reading and thinking; its own transcript showed five tool calls and a minute and a half of thought on a 48,000-character prompt, and it needed a few more minutes. A clock cannot tell that from a hung process. Output can: the CLIs are asked for their streaming output (thinking included), so a thinking model is seen to be alive every second or so, and a dead one is silent.
+
+- **`ai_merge_idle`** (180; `--ai-idle` for one run) is the hang detector: the silence, in seconds, after which a backend that has shown no sign of life is stopped. A local server processing a large prompt or a hosted queue on a bad day takes tens of seconds before the first token, which is why the default is minutes rather than seconds.
+- **`ai_merge_timeout`** (0 = none; `--ai-timeout`) is a hard ceiling on one call, for a machine with nobody watching. Off by default on purpose.
+- **`ai_merge_max_turns`** (40) is the cost fence on a CLI that loops: the budget of agentic turns one call may take. Time no longer bounds cost, so this does.
+
+The server backends (`lmstudio`, `ollama`, `openai`, `openrouter`) answer in one piece and show no sign of life while they work, so for them the silence window is the ceiling when you set none: a server call ends at `ai_merge_idle` seconds. Streaming for the servers is the next step, after which the same rule applies to them.
+
+At a console a `still working` line appears every half minute so you know the call is alive, and Ctrl-C stops it and keeps what exists. When a call is stopped for silence, the deep step keeps its sandbox and names it, and names Claude Code's transcript of the run (under its projects directory, keyed by the sandbox path) so you can read what the model was doing rather than guess. Being alive is not the same as making progress: a local model starved by an oversized context window produces a token every few seconds and is "alive" by this rule for as long as you let it. The `backend:` warning under the answer says when the window is the likely cause, and the `still working` line's counts show the pace.
 
 ## `--accept` on a proposal you never touched
 

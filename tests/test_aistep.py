@@ -199,6 +199,36 @@ def test_the_cache_key_changes_with_the_inputs(tmp_path, fake):
     assert fake.calls == ["claude", "claude"]
 
 
+def test_the_progress_sink_counts_and_speaks_only_on_its_period_v0610():
+    """v0.6.10, run while alive: on a console the backend's lines go to a
+    sink that prints nothing per line and one `still working` line per
+    period, with what it has counted -- so a person sees a long call is
+    alive without the echo `--ai-verbose` gives."""
+    import io
+    out = io.StringIO()
+    quiet = aistep.Progress(out=out, period=60)
+    for _ in range(5):
+        quiet.write('{"type":"stream_event","event":{"type":"content_block_delta"}}\n')
+    quiet.write('{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read"}]}}\n')
+    quiet.flush()
+    assert quiet.events == 6 and quiet.tool_calls == 1 and out.getvalue() == ""
+    loud = aistep.Progress(out=out, period=0)
+    loud.write("anything\n")
+    said = out.getvalue()
+    assert "still working" in said and "1 events" in said and "0 tool calls" in said
+
+
+def test_the_progress_sink_does_not_count_plain_assistant_text_as_a_tool_call_v0610_M10():
+    """Mutation sweep M-10 survivor (2026-09-18): widening the tool-call
+    heuristic from AND to OR survived, because the existing test's only
+    'assistant' line also carries 'tool_use'. Plain assistant text -- prose,
+    no tool call -- must not be counted."""
+    import io
+    p = aistep.Progress(out=io.StringIO(), period=60)
+    p.write('{"type":"assistant","message":{"content":[{"type":"text","text":"just words"}]}}\n')
+    assert p.tool_calls == 0
+
+
 def test_a_backend_failure_writes_nothing_and_carries_the_error(tmp_path, fake):
     w = _world(tmp_path)
     fake.response = Response("failed", error="Claude CLI not found")

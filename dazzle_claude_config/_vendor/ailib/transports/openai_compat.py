@@ -337,8 +337,13 @@ class OpenAICompatible:
         http = urllib.request.Request(ep + "/chat/completions", data=json.dumps(body).encode("utf-8"),
                                       headers=self._headers(spec, post=True), method="POST")
         started = time.monotonic()
+        # Until this transport streams (the run-while-alive design's second
+        # unit), a server answers in one piece and shows no sign of life
+        # meanwhile -- so the silence window is its ceiling when the caller
+        # set none. A zero timeout on urlopen would fail at once.
+        ceiling = req.timeout or req.idle
         try:
-            with urllib.request.urlopen(http, timeout=req.timeout) as r:   # noqa: S310
+            with urllib.request.urlopen(http, timeout=ceiling) as r:   # noqa: S310
                 answer = json.loads(r.read().decode("utf-8", "replace"))
         except urllib.error.HTTPError as e:
             detail = ""
@@ -348,7 +353,7 @@ class OpenAICompatible:
                 pass
             return Response("failed", error=f"{ep} answered HTTP {e.code}{': ' + detail if detail else ''}")
         except TimeoutError:
-            return Response("failed", error=(f"no answer from {model} within {req.timeout}s -- if it is "
+            return Response("failed", error=(f"no answer from {model} within {ceiling}s -- if it is "
                                              f"generating slowly, the usual cause is a context window "
                                              f"far larger than the prompt, not the model itself"))
         except (urllib.error.URLError, OSError) as e:

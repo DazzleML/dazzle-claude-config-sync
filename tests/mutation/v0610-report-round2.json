@@ -1,0 +1,57 @@
+{
+  "harness": {
+    "name": "mutation_sweep.py",
+    "version": "0.1.0"
+  },
+  "environment": {
+    "python": "3.12.0",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "root": ".",
+    "test_command": [
+      "python",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_transport_cli.py",
+      "tests/test_aideep.py",
+      "tests/test_aistep.py",
+      "tests/test_merge_ai.py",
+      "tests/test_ailib_types.py",
+      "tests/test_ailib_presets.py",
+      "tests/test_transport_openai_compat.py"
+    ],
+    "timestamp": "2026-09-18T04:30:34-04:00"
+  },
+  "results": [
+    {
+      "id": "M-1",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "drop the req.idle guard on the silence comparison -- an idle of 0 would then compare 'now - last[0] > 0' and could fire immediately -- killed on round 2 by test_an_idle_of_zero_means_no_silence_limit_v0610_M1",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M-4",
+      "file": "dazzle_claude_config/_vendor/ailib/transports/cli.py",
+      "note": "stream-json locator scans forward instead of from the end -- killed on round 2 by test_a_stream_json_locator_with_two_result_events_takes_the_last_v0610_M4",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    },
+    {
+      "id": "M-10",
+      "file": "dazzle_claude_config/aistep.py",
+      "note": "Progress's tool-call heuristic widens from AND to OR -- killed on round 2 by test_the_progress_sink_does_not_count_plain_assistant_text_as_a_tool_call_v0610_M10",
+      "verdict": "killed",
+      "restore_ok": true,
+      "output_tail": ""
+    }
+  ],
+  "summary": {
+    "killed": 3
+  },
+  "anomalies": []
+}

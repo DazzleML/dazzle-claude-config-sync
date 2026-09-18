@@ -34,6 +34,9 @@ You do not need this page to answer a question about one setting -- `--explain <
 | [`ai_merge_model`](#ai_merge_model) | `null` | `CCS_AI_MERGE_MODEL` |
 | [`ai_merge_api_key_env`](#ai_merge_api_key_env) | `null` | `CCS_AI_MERGE_API_KEY_ENV` |
 | [`ai_merge_api_key_file`](#ai_merge_api_key_file) | `null` | `CCS_AI_MERGE_API_KEY_FILE` |
+| [`ai_merge_idle`](#ai_merge_idle) | `180` | `CCS_AI_MERGE_IDLE` |
+| [`ai_merge_timeout`](#ai_merge_timeout) | `0` | `CCS_AI_MERGE_TIMEOUT` |
+| [`ai_merge_max_turns`](#ai_merge_max_turns) | `40` | `CCS_AI_MERGE_MAX_TURNS` |
 | [`interactive`](#interactive) | `true` | `CCS_INTERACTIVE` |
 | [`status_detail`](#status_detail) | `"auto"` | `CCS_STATUS_DETAIL` |
 | [`status_max_lines`](#status_max_lines) | `30` | `CCS_STATUS_MAX_LINES` |
@@ -92,6 +95,24 @@ The NAME of the environment variable holding the key a hosted backend needs -- n
 **Default:** `null` &middot; **Environment:** `CCS_AI_MERGE_API_KEY_FILE`
 
 The PATH of a file holding the key a hosted backend needs, read BEFORE the environment variable -- for a key you keep in a file rather than a shell. `NAME=value` lines, where NAME is the variable ai_merge_api_key_env or the preset names (OPENROUTER_API_KEY for openrouter); an `export ` prefix, quotes, `#` comments and blank lines are fine, and a file holding only the key works too. Unset means the environment variable, and when that is unset as well, `~/claude/keys/<preset>.env` -- user territory, one file per provider, never part of the payload. The key's value is read when a request is made and never enters this file, the cache, a record or a report; `ccs doctor` says which of the three places it found the key in, and on Linux and macOS warns when the file is readable by anyone but you.
+
+### ai_merge_idle
+
+**Default:** `180` &middot; **Environment:** `CCS_AI_MERGE_IDLE`
+
+Seconds a backend may be silent before ccs declares it dead and stops the call. An AI merge runs while it is alive -- a thinking model is not silent (its thinking arrives as output every second or so on the streaming formats ccs asks for), and a dead process emits nothing -- so this is the hang detector, not a ceiling: a call that takes ten minutes of real work finishes. 180 catches a dead CLI or a hung server within three minutes and leaves room for a hosted queue or a large prompt being processed. `--ai-idle` overrides it for one run. When it fires, the report says how long the silence was and, for the deep step, where the sandbox and the CLI's own transcript were left.
+
+### ai_merge_timeout
+
+**Default:** `0` &middot; **Environment:** `CCS_AI_MERGE_TIMEOUT`
+
+A hard ceiling in seconds on one AI call, for a machine with nobody watching -- CI, a scheduled run -- or for a cost you want fenced by time. 0, the default, means none: a call ends when the model finishes, when it goes silent (ai_merge_idle), or when you stop it. Before 0.6.10 this was a fixed 120 seconds, and it cut off a model that was reading and thinking about a real file. `--ai-timeout` overrides it for one run; the report names the ceiling as yours when it fires.
+
+### ai_merge_max_turns
+
+**Default:** `40` &middot; **Environment:** `CCS_AI_MERGE_MAX_TURNS`
+
+The budget of agentic turns a CLI backend may take on one call (claude's --max-turns): the cost fence for a call that is allowed to run while it is alive. Each turn is one round of the model reading or editing and looking again; the real paragraph case used five turns in its first 100 seconds. 40 is generous for a merge of one file. Unset means the preset's own budget; the server backends (lmstudio, ollama, openai, openrouter) take no turns and ignore it.
 
 ### interactive
 

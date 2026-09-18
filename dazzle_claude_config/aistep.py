@@ -28,6 +28,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -51,6 +52,50 @@ PROMPT_ONLY = "prompt-only"
 TOOL_NAME = "ccs-merge"
 
 
+class Progress:
+    """A `stream_to` sink for a console while a call runs (v0.6.10): the
+    backend's lines are the sign of life the transport watches, and this
+    counts them without echoing -- one `still working` line per period,
+    with the elapsed time, the events and the tool calls seen, so a person
+    knows a long call is alive and can stop it knowingly. `--ai-verbose`
+    is the other sink: the full echo, to stdout."""
+
+    def __init__(self, out=None, period: float = 30.0) -> None:
+        self.out = out if out is not None else sys.stdout
+        self.period = float(period)
+        self.events = 0
+        self.tool_calls = 0
+        self.started = time.monotonic()
+        self.last_print = self.started
+
+    def write(self, line: str) -> None:
+        self.events += 1
+        if '"tool_use"' in line and '"assistant"' in line:
+            self.tool_calls += 1
+        now = time.monotonic()
+        if now - self.last_print >= self.period:
+            self.last_print = now
+            try:
+                self.out.write(f"    still working: {int(now - self.started)}s, {self.events} events, "
+                               f"{self.tool_calls} tool calls\n")
+                self.out.flush()
+            except (OSError, ValueError):
+                pass
+
+    def flush(self) -> None:
+        pass
+
+
+def sink_for(opts: "AiOptions"):
+    """Where a backend's lines go while it works: the full echo for
+    `--ai-verbose`, a counting `Progress` on a console, nothing when piped."""
+    if opts.verbose:
+        return sys.stdout
+    if opts.progress:
+        return Progress()
+    return None
+
+
 @dataclass
 class AiOptions:
     """What the CLI decided; one parameter into ``merge.run``.
@@ -70,7 +115,16 @@ class AiOptions:
     refresh: bool = False          # --ai-refresh: bypass the cache
     verbose: bool = False          # --ai-verbose: stream the backend
     response: Path | None = None   # --ai-response FILE: an answer carried back
-    timeout: int = 120
+    # Run while alive (v0.6.10): a call ends when the model finishes, when it
+    # has shown no sign of life for `idle` seconds, or when a person set a
+    # ceiling -- `timeout` 0, the default, means none. `max_turns` is the
+    # cost fence on a CLI that loops (None: the preset's own budget).
+    # `progress`: a console is attached, so a `still working` line every
+    # half minute is wanted while a call runs (never when piped).
+    timeout: int = 0
+    idle: int = 180
+    max_turns: int | None = None
+    progress: bool = False
     endpoint: str | None = None    # override the preset's server address
     model: str | None = None       # override the preset's model
     api_key_env: str | None = None  # override the NAME of the credential's env var
@@ -246,7 +300,7 @@ def ai_step(*, label: str, ours: Path, base: Path, theirs: Path, merged: Path,
             return out
         out.backend_identity = backend.identity
         req = ailib.Request(prompt=prompt, schema=aiprompt.ANSWER_SCHEMA, timeout=opts.timeout,
-                            stream_to=sys.stdout if opts.verbose else None)
+                            idle=opts.idle, stream_to=sink_for(opts))
         resp = ailib.run(backend, req, cache_dir=opts.cache_dir, fingerprint_extra=fingerprint,
                          refresh=opts.refresh, tool=TOOL_NAME)
         key = resp.key or key

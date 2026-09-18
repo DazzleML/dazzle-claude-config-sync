@@ -265,6 +265,7 @@ class _NoTools:
     calls: int = 0
     fail: str = ""                 # when set, the backend fails with this sentence instead of answering
     reply: str = ""                # when set, the whole reply verbatim (several blocks, prose, anything)
+    interrupt: bool = False        # when set, the call raises KeyboardInterrupt (the person's Ctrl-C)
 
     def probe(self, spec):
         from dazzle_claude_config._vendor.ailib.types import Readiness
@@ -277,6 +278,8 @@ class _NoTools:
         from dazzle_claude_config._vendor.ailib.types import Response
         _NoTools.calls += 1
         assert not req.workdir, "the no-tools form never names a workdir"
+        if _NoTools.interrupt:
+            raise KeyboardInterrupt
         if _NoTools.fail:
             return Response("failed", error=_NoTools.fail)
         if _NoTools.reply:
@@ -293,6 +296,7 @@ def fakes(monkeypatch):
     monkeypatch.setitem(_bm._TRANSPORTS, "openai_compat", _NoTools())
     _Tools.script, _Tools.escape, _Tools.calls, _Tools.seen = [], None, 0, {}
     _NoTools.diff, _NoTools.calls, _NoTools.fail, _NoTools.reply = HAND_DIFF, 0, "", ""
+    _NoTools.interrupt = False
 
 
 def _opts(w, backend="claude"):
@@ -339,6 +343,48 @@ def test_the_sandbox_is_released_and_the_workdir_holds_no_worktree_afterwards(tm
     _deep(w, scope=1)
     assert not (w["ws"] / "skills__merged.py.ai-deep" / "checkout").exists()
     assert "ai-deep" not in _git(w["co"], "worktree", "list")
+
+
+# -- run while alive (v0.6.10, 2026-09-18): what a failure leaves behind ------------------
+
+def test_a_call_declared_dead_keeps_the_sandbox_and_names_what_the_model_was_doing_v0610(tmp_path, fakes, monkeypatch):
+    """The deep step on Opus was cut mid-thought on a real file and left
+    nothing to read. Now a failed call keeps the sandbox (named), and when
+    the backend went silent the report names Claude Code's own transcript
+    of the run, found under the config directory by the sandbox's cwd."""
+    import re
+    w = _world(tmp_path)
+    _NoTools.fail = "fake-27b gave no sign of life for 3s -- stopped"
+    cfg = tmp_path / "claude-config"
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
+    root = w["ws"] / "skills__merged.py.ai-deep"
+    tdir = cfg / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(root))
+    tdir.mkdir(parents=True)
+    (tdir / "abc123.jsonl").write_text('{"type":"user"}\n', encoding="utf-8")
+    out = _deep(w, backend="lmstudio", scope=1)
+    assert out.status == "deep-failed" and "no sign of life" in out.error
+    assert any("sandbox kept" in line and str(root) in line for line in out.reports), out.reports
+    assert any("what it was doing" in line and "abc123.jsonl" in line for line in out.reports), out.reports
+    assert (root / "checkout").exists()
+
+
+def test_a_call_that_fails_for_another_reason_keeps_the_sandbox_but_names_no_transcript_v0610(tmp_path, fakes, monkeypatch):
+    w = _world(tmp_path)
+    _NoTools.fail = "fake-27b exited with code 3: boom"
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "empty-config"))
+    out = _deep(w, backend="lmstudio", scope=1)
+    assert out.status == "deep-failed"
+    assert any("sandbox kept" in line for line in out.reports)
+    assert not any("what it was doing" in line for line in out.reports)
+
+
+def test_the_persons_ctrl_c_keeps_the_sandbox_too_v0610(tmp_path, fakes):
+    w = _world(tmp_path)
+    _NoTools.interrupt = True
+    root = w["ws"] / "skills__merged.py.ai-deep"
+    with pytest.raises(KeyboardInterrupt):
+        _deep(w, backend="lmstudio", scope=1)
+    assert (root / "checkout").exists()
 
 
 # -- C2: the control -------------------------------------------------------------------

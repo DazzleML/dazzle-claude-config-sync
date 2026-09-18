@@ -50,7 +50,12 @@ def test_an_unknown_name_is_refused_with_the_names():
 def test_claude_is_the_proven_argv_with_the_environment_scrubbed():
     s = ailib.spec_for("claude")
     assert s.transport == "cli" and s.command[0] == "claude"
-    assert ("--output-format", "text") == tuple(s.command[1:3])
+    # v0.6.10: the streaming output, so a call is observably alive while it
+    # thinks; the answer is the final result event, and a turn budget fences cost
+    assert ("--output-format", "stream-json") == tuple(s.command[1:3])
+    assert "--verbose" in s.command and "--include-partial-messages" in s.command
+    assert ("--max-turns", "{turns}") in tuple(zip(s.command, s.command[1:]))
+    assert s.answer == "stream-json:result" and s.max_turns == 40
     assert s.command[-2:] == ("-p", "-")                     # the prompt on stdin
     assert "{model}" in " ".join(s.command)                   # --model when a model is set
     assert set(s.env_unset) == {"CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"}
@@ -73,6 +78,17 @@ def test_the_claude_presets_ask_for_opus_5_unless_told_otherwise():
         assert "model" in honoured
     assert ailib.spec_for("claude", model="claude-sonnet-5").model == "claude-sonnet-5"
     assert ailib.spec_for("codex").model == ""                       # codex keeps the CLI's own default
+
+
+def test_a_turn_budget_reaches_the_claude_argv_and_can_be_overridden_v0610():
+    """v0.6.10: `--max-turns` is the cost fence for a CLI that loops. The
+    preset carries 40; `ai_merge_max_turns` overrides through spec_for."""
+    from dazzle_claude_config._vendor.ailib.transports.cli import SubprocessCli
+    from dazzle_claude_config._vendor.ailib.types import Request
+    s = ailib.spec_for("claude", max_turns=5)
+    argv, _, _ = SubprocessCli()._argv(s, Request(prompt="p"), "claude", __import__("pathlib").Path("."))
+    assert argv[argv.index("--max-turns") + 1] == "5"
+    assert "turns=5" in s.identity() and "turns=40" in ailib.spec_for("claude").identity()
 
 
 def test_codex_is_exec_on_stdin_with_a_model_flag():
@@ -132,7 +148,8 @@ def test_the_cli_presets_carry_a_tools_grant_that_only_a_workdir_unlocks():
     assert ailib.spec_for("lmstudio").tools == "" and "tools" not in build(ailib.spec_for("lmstudio")).capabilities
     # pass 1's argv, byte for byte: no workdir, no grant on the command line
     argv, _, honoured = SubprocessCli()._argv(c, Request(prompt="p"), "claude", Path("."))
-    assert argv == ["claude", "--output-format", "text", "--model", "claude-opus-5", "-p", "-"]
+    assert argv == ["claude", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+                    "--model", "claude-opus-5", "--max-turns", "40", "-p", "-"]
     assert "tools" not in honoured
     argv, _, _ = SubprocessCli()._argv(x, Request(prompt="p"), "codex", Path("."))
     assert argv == ["codex", "exec", "--skip-git-repo-check", "-"]

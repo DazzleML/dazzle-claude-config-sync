@@ -38,6 +38,11 @@ prompt = sys.stdin.read()
 if "--stream" in args:
     for i in range(3):
         print(f"line {i}"); sys.stdout.flush(); time.sleep(0.05)
+if opt("--chatty"):                      # alive: a line every half second, N times
+    for i in range(int(opt("--chatty"))):
+        print(f"still here {i}"); sys.stdout.flush(); time.sleep(0.5)
+if "--mute" in args:                     # one sign of life, then nothing for a long time
+    print("starting"); sys.stdout.flush(); time.sleep(30)
 if "--banner" in args:
     print("Loading model..."); print("Ready.")
 report = {
@@ -58,6 +63,19 @@ if out:
     open(out, "w", encoding="utf-8").write(json.dumps(report)); print("wrote the answer to a file")
 elif "--envelope" in args:
     print(json.dumps({"type": "result", "result": "prose here", "structured_output": report}))
+elif "--events" in args or "--events-error" in args:      # claude's stream-json, one event per line
+    print(json.dumps({"type": "system", "subtype": "init"}))
+    print(json.dumps({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "thinking_delta"}}}))
+    print(json.dumps({"type": "assistant", "message": {"content": [{"type": "text", "text": "prose"}]}}))
+    if "--events-error" in args:
+        print(json.dumps({"type": "result", "subtype": "error_max_turns", "is_error": True, "result": "budget exceeded"}))
+    else:
+        print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(report)}))
+elif "--events-twice" in args:               # two result events: only the LAST is the answer
+    print(json.dumps({"type": "system", "subtype": "init"}))
+    print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": "EARLY-DO-NOT-USE"}))
+    print(json.dumps({"type": "stream_event", "event": {"type": "content_block_delta", "delta": {"type": "thinking_delta"}}}))
+    print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": json.dumps(report)}))
 elif "--fence" in args:
     print("Some prose.\n```json\n" + json.dumps(report) + "\n```\n")
 else:
@@ -216,13 +234,13 @@ def test_our_cwd_and_environ_are_untouched_DURING_the_call(cli, monkeypatch):
     """Not before-and-after (today's facade restores both in `finally`, so
     that check cannot go red): at the moment the subprocess is started."""
     seen = {}
-    real_run = subprocess.run
+    real_popen = subprocess.Popen                  # v0.6.10: every call is Popen through the streaming reader
 
     def spy(*a, **kw):
         seen["cwd"], seen["env"] = os.getcwd(), dict(os.environ)
-        return real_run(*a, **kw)
+        return real_popen(*a, **kw)
 
-    monkeypatch.setattr(subprocess, "run", spy)
+    monkeypatch.setattr(subprocess, "Popen", spy)
     before_cwd, before_env = os.getcwd(), dict(os.environ)
     build(_spec(cli)).invoke(Request(prompt="p", timeout=20))
     assert seen["cwd"] == before_cwd and seen["env"] == before_env
@@ -319,8 +337,10 @@ def test_a_nonzero_exit_is_a_failure_carrying_the_childs_stderr(cli):
 
 
 def test_a_timeout_is_a_failure_that_says_so(cli):
-    r = build(_spec(cli, "--slow")).invoke(Request(prompt="p", timeout=1))
-    assert r.status == "failed" and "timed out" in r.error
+    """A ceiling the caller SET (nonzero) still cuts a call, with a sentence
+    that names it as the caller's ceiling, not a verdict on the model."""
+    r = build(_spec(cli, "--slow")).invoke(Request(prompt="p", timeout=1, idle=30))
+    assert r.status == "failed" and "ceiling" in r.error and "1s" in r.error
 
 
 def test_a_missing_executable_fails_without_raising():
@@ -347,3 +367,88 @@ def test_capabilities_follow_the_template_and_the_preset(cli):
     assert {"model", "schema", "stream"} <= full and "data_stays_on_prem" not in full
     local = build(_spec(cli, on_prem=True)).capabilities
     assert "data_stays_on_prem" in local
+
+
+# -- run while alive (v0.6.10, 2026-09-18) -------------------------------------------------
+#
+# The deep step on Opus was cut at a fixed 120 s while it was thinking about a
+# real file; its own transcript showed it alive the whole time, and a probe
+# showed thinking arrives as output every second or so. So a call ends on
+# SILENCE, not on a clock: `idle` seconds with nothing from the child, or a
+# ceiling only when the caller set one.
+
+def test_a_call_that_keeps_talking_is_never_cut_by_a_clock_v0610(cli):
+    """Five seconds of half-second lines under a two-second idle window and no
+    ceiling: kept. Anchor: before this unit `timeout=0` was a zero-second
+    ceiling and the call failed at once."""
+    r = build(_spec(cli, "--chatty", "10")).invoke(Request(prompt="p", timeout=0, idle=2))
+    assert r.ok, r.error
+    assert json.loads(r.text.strip().splitlines()[-1])["hunks"]      # the answer follows the chatter
+
+
+def test_silence_ends_a_call_with_a_sentence_that_says_so_v0610(cli):
+    """One line, then thirty seconds of nothing, under a two-second window:
+    stopped within a few seconds, and the sentence says what was observed --
+    no sign of life for that long -- never 'timed out'."""
+    import time
+    t0 = time.monotonic()
+    r = build(_spec(cli, "--mute")).invoke(Request(prompt="p", timeout=0, idle=2))
+    assert r.status == "failed" and "no sign of life" in r.error and "2s" in r.error
+    assert time.monotonic() - t0 < 10
+
+
+def test_a_ceiling_you_set_cuts_even_a_chatty_call_v0610(cli):
+    r = build(_spec(cli, "--chatty", "10")).invoke(Request(prompt="p", timeout=1, idle=30))
+    assert r.status == "failed" and "ceiling" in r.error and "1s" in r.error
+
+
+def test_an_idle_of_zero_means_no_silence_limit_v0610_M1(cli):
+    """Mutation sweep M-1 survivor (2026-09-18): dropping the `req.idle and`
+    guard on the silence comparison survived every existing test, because
+    none of them ever call with `idle=0`. `idle=0` is meant to disable the
+    silence check the same way `timeout=0` disables the ceiling (`req.idle
+    and ...` short-circuits when idle is 0); a call under a ceiling but no
+    idle limit must be cut by the CEILING, not declared dead almost at once."""
+    r = build(_spec(cli, "--mute")).invoke(Request(prompt="p", timeout=1, idle=0))
+    assert r.status == "failed" and "ceiling" in r.error and "1s" in r.error
+
+
+def test_a_stream_json_locator_takes_the_final_result_event_v0610(cli):
+    """claude's `--output-format stream-json`: one event per line, the answer
+    in the last `result` event's `result` field; everything before it is
+    the sign of life, not the answer."""
+    r = build(_spec(cli, "--events", answer="stream-json:result")).invoke(Request(prompt="p", timeout=20))
+    assert r.ok, r.error
+    assert _report(r)["hunks"]
+
+
+def test_a_stream_json_locator_with_two_result_events_takes_the_last_v0610_M4(cli):
+    """Mutation sweep M-4 survivor (2026-09-18): `test_a_stream_json_locator_
+    takes_the_final_result_event_v0610` never exercised the `reversed()` --
+    its fixture only ever emits one `result` event, so forward and backward
+    search find the same line. Here two are emitted; only the second is the
+    real answer, and taking the first (a bare string, not JSON) would make
+    `_report` raise instead of returning the report."""
+    r = build(_spec(cli, "--events-twice", answer="stream-json:result")).invoke(Request(prompt="p", timeout=20))
+    assert r.ok, r.error
+    assert _report(r)["hunks"]
+
+
+def test_a_stream_json_result_that_is_an_error_fails_with_its_text_v0610(cli):
+    r = build(_spec(cli, "--events-error", answer="stream-json:result")).invoke(Request(prompt="p", timeout=20))
+    assert r.status == "failed" and "budget exceeded" in r.error
+
+
+def test_a_stream_json_locator_with_no_result_event_says_so_v0610(cli):
+    r = build(_spec(cli, "--banner", answer="stream-json:result")).invoke(Request(prompt="p", timeout=20))
+    assert r.status == "failed" and "result" in r.error
+
+
+def test_the_turns_placeholder_is_the_specs_budget_or_nothing_v0610(cli):
+    from dazzle_claude_config._vendor.ailib.transports.cli import SubprocessCli
+    with_budget = _spec(cli, "--max-turns", "{turns}", "--marker", max_turns=7)
+    argv, _, _ = SubprocessCli()._argv(with_budget, Request(prompt="p"), "x", Path("."))
+    assert argv[argv.index("--max-turns") + 1] == "7"
+    without = _spec(cli, "--max-turns", "{turns}", "--marker")
+    argv, _, _ = SubprocessCli()._argv(without, Request(prompt="p"), "x", Path("."))
+    assert "--max-turns" not in argv and "--marker" in argv
