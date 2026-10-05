@@ -1,4 +1,4 @@
-# dazzle-claude-config
+# dazzle-claude-config-sync
 
 [![PyPI](https://img.shields.io/pypi/v/dazzle-claude-config?color=green)](https://pypi.org/project/dazzle-claude-config/)
 [![Release Date](https://img.shields.io/github/release-date/DazzleML/dazzle-claude-config?color=green)](https://github.com/DazzleML/dazzle-claude-config/releases)
